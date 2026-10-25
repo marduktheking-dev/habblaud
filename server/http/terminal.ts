@@ -15,6 +15,7 @@ import { demoTerminalEntries } from '../../shared/demo/terminal';
 import type { Activity, AgentInfo, TerminalEntry, TerminalInit } from '../../shared/types';
 import { errMsg, log } from '../log';
 import type { Office } from '../model/office';
+import type { LiveConversation } from '../sources/source';
 import { FileTail } from '../sources/tail';
 import { createTerminalParser, type TerminalParser } from '../sources/terminal';
 import { sendJson } from './app';
@@ -44,6 +45,11 @@ export interface TerminalOptions {
   office: Office;
   /** Caminho do transcript de um agente real (SourceSet.transcriptPathOf). */
   transcriptPathOf: (agentId: string) => string | undefined;
+  /**
+   * Conversa ao vivo de um agente sem transcript em arquivo (SourceSet.liveConversation; o OpenCode lê o banco).
+   * Tem prioridade sobre `transcriptPathOf` e é tentada só para agentes presentes.
+   */
+  liveFor?: (agentId: string) => LiveConversation | undefined;
   /**
    * Parser da conversa de um agente real (SourceSet.parserFor): um NOVO a cada chamada. Ausente, ou undefined,
    * = createParser.
@@ -151,6 +157,28 @@ class TranscriptSource implements ConversationSource {
   }
 }
 
+/**
+ * Agente sem transcript em arquivo (OpenCode): a conversa é derivada na hora pela fonte ao vivo (o banco). O `init`
+ * vem das últimas entradas e o `append`, só do que for novo desde o ciclo anterior.
+ */
+class LiveSource implements ConversationSource {
+  constructor(
+    private readonly agentId: string,
+    private readonly conv: LiveConversation,
+    private readonly initEntries: number,
+    readonly intervalMs: number,
+  ) {}
+
+  load(): TerminalInit {
+    const { entries, truncated } = this.conv.load(this.initEntries);
+    return { agentId: this.agentId, entries, truncated };
+  }
+
+  poll(): PollResult {
+    return { append: this.conv.poll() };
+  }
+}
+
 /** Agente do demo: conversa fictícia montada do título e das atividades simuladas. */
 class DemoSource implements ConversationSource {
   /** Ids da última lista gerada (o que o cliente já tem). */
@@ -245,6 +273,14 @@ export class TerminalStreams {
     this.serve(req, res, streamId, new TranscriptSource(streamId, path, o, this.sessionPollMs));
   }
 
+  /**
+   * Abre a conversa de uma sessão do histórico SEM transcript em arquivo (OpenCode): a fonte ao vivo deriva as
+   * entradas do banco a cada ciclo. `streamId` vai no `init` (ex.: "session:<conta>:<sessionId>").
+   */
+  attachLiveSession(req: IncomingMessage, res: ServerResponse, streamId: string, conv: LiveConversation): void {
+    this.serve(req, res, streamId, new LiveSource(streamId, conv, this.initEntries, this.sessionPollMs));
+  }
+
   /** Limite de terminais, `init` e o stream SSE de uma fonte já escolhida. */
   private serve(req: IncomingMessage, res: ServerResponse, id: string, source: ConversationSource): void {
     if (this.streams.size >= this.maxStreams) {
@@ -287,8 +323,15 @@ export class TerminalStreams {
   private sourceFor(agentId: string): ConversationSource | string {
     const office = this.opts.office;
     if (office.has(agentId)) {
+      // Agente sem transcript em arquivo (OpenCode): a conversa sai do banco, pela fonte ao vivo.
+      const live = this.opts.liveFor?.(agentId);
+      if (live) return new LiveSource(agentId, live, this.initEntries, this.pollMs);
       const path = this.opts.transcriptPathOf(agentId);
-      if (!path) return tr('transcript do agente não encontrado');
+      if (!path) {
+        return office.detail(agentId)?.agent.provider === 'opencode'
+          ? tr('a conversa do OpenCode ainda não está disponível')
+          : tr('transcript do agente não encontrado');
+      }
       const parserFor = this.opts.parserFor;
       const createParser = parserFor ? () => parserFor(agentId) ?? this.createParser() : this.createParser;
       const o = { transcriptPathOf: this.opts.transcriptPathOf, createParser, initTailBytes: this.initTailBytes, initEntries: this.initEntries };

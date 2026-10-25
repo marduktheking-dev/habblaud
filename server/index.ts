@@ -30,13 +30,18 @@ import { createPermissionRoutes } from './permissions/http';
 import { PermissionRegistry } from './permissions/registry';
 import { codexAccountOf } from './codex/http';
 import { createCodexQueueRunner, findCodexBin } from './messages/codex';
+import { findBinary as findOpenCodeBin } from './messages/opencode';
 import { createMessageRoutes } from './messages/http';
 import { MessageRegistry } from './messages/registry';
 import type { CodexLive } from './sources/codex/live';
+import type { OpenCodeLive } from './sources/opencode/live';
 import { ClaudeWatcher } from './sources/watcher';
 import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
+import { OpenCodeHistory } from './sources/opencode/history';
 import { CodexSource } from './sources/codex/source';
+import { discoverOpenCodeDirs } from './sources/opencode/accounts';
+import { OpenCodeSource } from './sources/opencode/source';
 import { createBuildReader, readBuildInfo } from './build';
 import { UpdateChecker } from './updates/checker';
 import { getLocale, tr } from '../shared/i18n';
@@ -141,6 +146,13 @@ if (codex) agents.add(codex);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
+// Fonte do OpenCode (sources/opencode/): o plugin local (~/.config/opencode/plugins/habblaud-events.ts) manda os
+// eventos reais da sessão para POST /api/opencode/events e a fonte atualiza o agente na hora. Como o OpenCode é uma
+// instalação global, o normal é uma pasta só; HABBLAUD_OPENCODE=0 desliga.
+const opencodeDirs = config.opencode ? discoverOpenCodeDirs(process.env, config.home) : [];
+const opencode = opencodeDirs.length ? new OpenCodeSource({ accounts, office, dirs: opencodeDirs, env: process.env, home: config.home }) : undefined;
+if (opencode) agents.add(opencode);
+const opencodeLive: OpenCodeLive | undefined = opencode;
 late.office = office;
 late.agents = agents;
 // Página que pode responder pelo escritório: Host local na porta local; na remota, só com permissions liberado.
@@ -189,13 +201,19 @@ if (worldUplink && worldSocial) {
 // Terminal: só existe com bind local (ver terminalOffReason em config.ts).
 // Cada agente com o parser da ferramenta dele (o do Claude Code por padrão).
 const terminals = config.terminal
-  ? new TerminalStreams({ office, transcriptPathOf: (id) => agents.transcriptPathOf(id), parserFor: (id) => agents.parserFor(id) })
+  ? new TerminalStreams({
+      office,
+      transcriptPathOf: (id) => agents.transcriptPathOf(id),
+      parserFor: (id) => agents.parserFor(id),
+      liveFor: (id) => agents.liveConversation(id),
+    })
   : undefined;
 // Histórico do terminal (sessões recentes, abertas ou encerradas, de todas as ferramentas): mesma trava.
 const history = config.terminal
   ? new HistorySet([new SessionHistory({ accounts: () => accounts.entries(), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) })])
   : undefined;
 if (history && codex) history.add(new CodexHistory({ accounts: () => accounts.entriesOf('codex'), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) }));
+if (history && opencode) history.add(new OpenCodeHistory({ accounts: () => accounts.entriesOf('opencode'), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) }));
 // Entregas: o fim de cada pedido, lido dos transcripts do histórico (mesma trava do terminal). Os arquivos entregues
 // são lidos aqui (Node, ou pasta de conta montada no Docker) ou pelo auxiliar do host.
 const deliveries = history
@@ -372,6 +390,7 @@ const api = createApiHandler({
     return recentFolders(history ? await history.list().catch(() => []) : [], rooms);
   },
   codexLive,
+  opencodeLive,
   stats,
   updates,
   remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,
@@ -491,6 +510,16 @@ server.listen(config.port, config.host, () => {
   } else {
     log.info(tr('   Codex: {0}.', [config.codex ? tr('nenhuma pasta do Codex encontrada (defina HABBLAUD_CODEX_DIRS)') : tr('desligado (HABBLAUD_CODEX=0)')]));
   }
+  if (opencode) {
+    const opencodeAccounts = opencode.accountEntries();
+    const open = opencode.sources().reduce((n, s) => n + s.sessions, 0);
+    log.info(tr('   OpenCode: {0} conta(s), {1} sessão(ões) aberta(s); eventos do plugin em POST /api/opencode/events.', [opencodeAccounts.length, open]));
+    for (const a of opencodeAccounts) {
+      log.info(tr('   Conta {0} do OpenCode ({1}): uso: {2} · {3}', [a.detected.short, a.id, accounts.usageView(a.id).status, a.detected.configDir]));
+    }
+  } else {
+    log.info(tr('   OpenCode: {0}.', [config.opencode ? tr('nenhuma pasta do OpenCode encontrada (defina HABBLAUD_OPENCODE_DIRS)') : tr('desligado (HABBLAUD_OPENCODE=0)')]));
+  }
   if (office.isDemo()) log.info(tr('   Modo demonstração ligado (agentes simulados misturados aos reais).'));
   if (config.terminal) log.info(tr('   Terminal: ligado (acesso só local).'));
   else log.info(tr('   Terminal: desligado ({0}).', [terminalOffReason(process.env, config.host, config.inDocker)]));
@@ -519,6 +548,14 @@ server.listen(config.port, config.host, () => {
           ? tr('   Mensagens ao Codex: pelo auxiliar do host (deixe npm run codex:bridge rodando no Mac).')
           : tr('   Mensagens ao Codex: sem o binário do Codex (codex no PATH ou HABBLAUD_CODEX_BIN); o auxiliar npm run codex:bridge também serve.'),
     );
+    if (!config.inDocker) {
+      const opencodeBin = findOpenCodeBin();
+      log.info(
+        opencodeBin
+          ? tr('   Mensagens ao OpenCode: pelo CLI ({0} run --session).', [opencodeBin])
+          : tr('   Mensagens ao OpenCode: sem o CLI (opencode-termux no PATH ou HABBLAUD_OPENCODE_BIN).'),
+      );
+    }
   }
   if (config.world.warning) log.warn(`   ${config.world.warning}.`);
   log.info(
@@ -550,6 +587,7 @@ function shutdown(signal: string): void {
   accounts.stop();
   hub.stop();
   terminals?.stop();
+  history?.close();
   timeline?.stop();
   permissions?.stop();
   messages?.stop();

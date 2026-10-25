@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountInfo } from '../../../shared/types';
-import { cardState, codexUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
+import { cardState, codexUsageNote, openCodeUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
 
 const MIN = 60_000;
 type Acc = Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider' | 'email' | 'plan' | 'configDir'>;
@@ -48,5 +48,19 @@ describe('cartão de uso de uma conta do Codex', () => {
     expect(usageSubtitle({ email: 'a@b.c', configDir: '~/.claude' })).toBe('a@b.c');
     expect(usageSubtitle({ configDir: '~/.claude' })).toBe('~/.claude');
     expect(codexUsageNote({ usageStatus: 'ok' }, 0)).toBe('');
+  });
+
+  it('cartão de uma conta do OpenCode: "sem dados de uso" e a dica dos totais (o plano não existe na máquina)', () => {
+    const oc: Acc = { provider: 'opencode', usageStatus: 'disabled', configDir: '~/.config/opencode' };
+    expect(usageMessage(oc)).toEqual(['sem dados de uso', 'sem dados']);
+    expect(cardState(oc)).toBe('empty');
+    expect(showsUsageAge(oc)).toBe(false);
+    expect(usageSubtitle(oc)).toBe('~/.config/opencode');
+    expect(openCodeUsageNote(oc)).toMatch(/^O OpenCode não informa o uso do plano .*na gaveta do agente\.$/);
+    // As janelas de 5 h/semana são do plano: no OpenCode não há de onde tirá-las.
+    expect(openCodeUsageNote({ provider: 'opencode', usageStatus: 'disabled', usage: { source: 'statusline', fiveHour: win, fetchedAt: 0 } })).toMatch(/^O OpenCode não informa/);
+    // Nas outras ferramentas a dica é vazia (o Codex tem a dele).
+    expect(openCodeUsageNote(codex())).toBe('');
+    expect(openCodeUsageNote({ usageStatus: 'disabled' })).toBe('');
   });
 });

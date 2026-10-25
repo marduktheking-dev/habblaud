@@ -7,12 +7,15 @@
 // Conta do Codex: os números vêm dos arquivos de sessão dele, que só se renovam enquanto alguma sessão roda; por isso
 // a idade ("há 12 min") fica sempre à mostra. Sem cota nem créditos ("sem cota") nunca vira 0%. Não há o que
 // instalar para o uso: "Como funciona" abre a ajuda na seção do Codex. Sem Opus/Sonnet nem e-mail (só o plano).
+// Conta do OpenCode: ele não grava o uso do plano (sessão de 5 horas e semanal) em lugar nenhum, então também não há o
+// que instalar: o cartão diz "sem dados de uso", sem botão, e a dica explica que os totais da sessão (ferramentas,
+// tokens e custo, lidos do banco dele) ficam na gaveta do agente.
 import type { AccountInfo } from '../../../shared/types';
 import type { UiContext } from './context';
 import { h, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
 import { FIVE_HOURS_MS, relativeTime, usageLevel, usageWindowView, WEEK_MS, type UsageWindowView } from './format';
 import { ICONS } from './icons';
-import { isCodex } from './provider';
+import { isCodex, isOpenCode } from './provider';
 import { usageRowFits } from './usage-row';
 import { createAccountChip, createProviderTag, updateAccountChip, updateProviderTag } from './widgets';
 import { tr } from '../../../shared/i18n';
@@ -201,6 +204,15 @@ export function codexUsageNote(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'p
   return tr('O Codex só grava o uso enquanto alguma sessão roda: estes números são da última leitura ({0}).', [age]);
 }
 
+/**
+ * Explicação do cartão de uma conta do OpenCode (dica); '' nas outras. O OpenCode não grava o uso do plano na máquina
+ * (nada de sessão de 5 horas ou semanal), então não há o que ativar: a dica aponta os totais da sessão.
+ */
+export function openCodeUsageNote(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider'>): string {
+  if (!isOpenCode(a)) return '';
+  return tr('O OpenCode não informa o uso do plano (sessão de 5 horas e semanal). Os totais da sessão — ferramentas, tokens e custo — aparecem no escritório, na gaveta do agente.');
+}
+
 export class UsageCards {
   readonly el: HTMLElement;
   private list: KeyedList<AccountInfo>;
@@ -337,12 +349,13 @@ export class UsageCards {
     const r = this.refs.get(card)!;
     const now = this.ctx.now();
     const codex = isCodex(a);
+    const opencode = isOpenCode(a);
     updateAccountChip(r.chip, a);
     setStyleVar(card, '--acc', a.color);
     setText(r.name, a.name);
     updateProviderTag(r.prov, codex ? 'codex' : 'claude', a.name);
     setText(r.email, usageSubtitle(a));
-    setAttr(card, 'aria-label', tr('{0}{1}: uso do plano', [a.name, codex ? ' (Codex)' : '']));
+    setAttr(card, 'aria-label', tr('{0}{1}: uso do plano', [a.name, codex ? ' (Codex)' : opencode ? ' (OpenCode)' : '']));
 
     const usage = a.usage;
     const state = cardState(a);
@@ -376,14 +389,14 @@ export class UsageCards {
     }
 
     // Sem números: "sem dados de uso" + "Como ativar" (no Codex, "Como funciona": não há o que instalar). Sem cota:
-    // a mensagem, sem botão.
+    // a mensagem, sem botão. No OpenCode também não há botão: o uso do plano não existe na máquina.
     const [msgLong, msgShort] = usageMessage(a);
     setText(r.msgLong, msgLong);
     setText(r.msgShort, msgShort);
     setHidden(r.msg, state !== 'empty' && state !== 'noquota');
-    setHidden(r.how, state === 'noquota');
+    setHidden(r.how, state === 'noquota' || opencode);
     r.msg.classList.toggle('is-noquota', state === 'noquota');
-    setTitle(r.msg, state === 'noquota' ? codexUsageNote(a, now) : '');
+    setTitle(r.msg, state === 'noquota' ? codexUsageNote(a, now) : opencode ? openCodeUsageNote(a) : '');
     setText(r.howLong, codex ? tr('Como funciona') : tr('Como ativar'));
     setText(r.howShort, codex ? tr('Saber') : tr('Ativar'));
     r.how.dataset.help = codex ? 'codex' : 'usage';
@@ -396,6 +409,7 @@ export class UsageCards {
     setText(r.tipTitle, `${a.name}${codex && !/codex/i.test(a.name) ? ' · Codex' : ''}${a.plan ? tr(' · plano {0}', [a.plan]) : ''}`);
     const rows: [string, string][] = [];
     if (codex) rows.push([tr('Ferramenta'), 'Codex']);
+    else if (isOpenCode(a)) rows.push([tr('Ferramenta'), 'OpenCode']);
     if (a.email) rows.push(['E-mail', a.email]);
     if (a.organization) rows.push([tr('Organização'), a.organization]);
     if (a.plan) rows.push([tr('Plano'), a.plan]);
@@ -421,6 +435,15 @@ export class UsageCards {
     // Codex: a explicação dele, sem o passo a passo do Claude Code (não há o que instalar para o uso).
     if (codex) {
       const note = codexUsageNote(a, now);
+      setText(r.tipNote, note);
+      setHidden(r.tipNote, !note);
+      setHidden(r.tipSetup, true);
+      return;
+    }
+
+    // OpenCode: o uso do plano não existe na máquina; também não há passo a passo nem o que instalar.
+    if (isOpenCode(a)) {
+      const note = openCodeUsageNote(a);
       setText(r.tipNote, note);
       setHidden(r.tipNote, !note);
       setHidden(r.tipSetup, true);

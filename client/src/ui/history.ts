@@ -10,7 +10,6 @@ import type { UiComponent, UiContext } from './context';
 import { h, iconButton, setAttr, setHidden, setText, setTitle } from './dom';
 import { calendarDayDiff, formatClock, formatDateTime, normalizeSearch, plural, shortPath } from './format';
 import { ICONS } from './icons';
-import { isCodex } from './provider';
 import { sessionProjectName, TERMINAL_UNAVAILABLE_HINT, type TerminalControl } from './terminal';
 import { createAccountChip, updateAccountChip } from './widgets';
 import { intlLocale, tr } from '../../../shared/i18n';
@@ -48,8 +47,8 @@ export function parseRecentSessions(raw: unknown): RecentSession[] {
     const title = str(o.title);
     const firstAt = num(o.firstAt);
     const agentId = str(o.agentId);
-    // Ausente = Claude Code (nunca grava 'claude').
-    if (o.provider === 'codex') s.provider = 'codex';
+    // Ausente = Claude Code (nunca grava 'claude'); dos conhecidos, só codex e opencode valem marcador.
+    if (o.provider === 'codex' || o.provider === 'opencode') s.provider = o.provider;
     if (project) s.project = project;
     if (title) s.title = title;
     if (firstAt !== undefined) s.firstAt = firstAt;
@@ -63,11 +62,16 @@ export function parseRecentSessions(raw: unknown): RecentSession[] {
  * Busca no histórico: título, projeto (nome ou caminho), nome/letra da conta e a ferramenta ("codex"), sem diferenciar
  * maiúsculas nem acentos.
  */
+/** Nome da ferramenta da sessão para exibição/busca: "Codex", "OpenCode" ou vazio (Claude Code, o padrão). */
+function sessionProviderName(s: RecentSession): string {
+  return s.provider === 'codex' ? 'Codex' : s.provider === 'opencode' ? 'OpenCode' : '';
+}
+
 export function filterSessions(list: readonly RecentSession[], query: string, accountLabel: (id: string) => string = (id) => id): RecentSession[] {
   const terms = normalizeSearch(query).split(/\s+/).filter(Boolean);
   if (!terms.length) return list.slice();
   return list.filter((s) => {
-    const hay = normalizeSearch([s.title ?? '', s.project ?? '', s.projectDir, accountLabel(s.account), isCodex(s) ? 'Codex' : ''].join(' '));
+    const hay = normalizeSearch([s.title ?? '', s.project ?? '', s.projectDir, accountLabel(s.account), sessionProviderName(s)].join(' '));
     return terms.every((t) => hay.includes(t));
   });
 }
@@ -317,11 +321,11 @@ export class HistoryPopover implements UiComponent {
     const title = s.title?.trim() || tr('Sessão sem título');
     const project = sessionProjectName(s);
     const live = s.open && !!s.agentId && !!this.ctx.agent(s.agentId);
-    const codex = isCodex(s);
+    const prov = sessionProviderName(s);
     const meta = h(
       'span',
       { class: 'ui-hist__meta' },
-      codex ? h('span', { class: 'ui-prov ui-prov--xs', text: 'Codex' }) : null,
+      prov ? h('span', { class: 'ui-prov ui-prov--xs', text: prov }) : null,
       h('span', { class: 'ui-hist__project', text: project }),
       h('span', { class: 'ui-hist__time', text: formatClock(s.lastAt, false) }),
     );
@@ -331,9 +335,10 @@ export class HistoryPopover implements UiComponent {
     const when = s.firstAt !== undefined && calendarDayDiff(s.firstAt, s.lastAt) !== 0 ? `${formatDateTime(s.firstAt)} → ${formatDateTime(s.lastAt)}` : s.firstAt !== undefined ? `${formatDateTime(s.firstAt)} → ${formatClock(s.lastAt, false)}` : formatDateTime(s.lastAt);
     setTitle(
       btn,
-      [title, shortPath(s.project ?? s.projectDir), `${account?.name ?? s.account}${codex ? ' (Codex)' : ''} · ${when} · ${formatSize(s.size)}`, live ? tr('Ainda aberta: abre o terminal ao vivo do agente') : tr('Encerrada: abre a conversa no terminal')].join('\n'),
+      // Sem tamanho (OpenCode não tem transcript em arquivo): a dica não mostra "1 KB" mentindo.
+      [title, shortPath(s.project ?? s.projectDir), `${account?.name ?? s.account}${prov ? ` (${prov})` : ''} · ${when}${s.size > 0 ? ` · ${formatSize(s.size)}` : ''}`, live ? tr('Ainda aberta: abre o terminal ao vivo do agente') : tr('Encerrada: abre a conversa no terminal')].join('\n'),
     );
-    setAttr(btn, 'aria-label', `${title}, ${project}, ${account?.name ?? s.account}${codex ? ', Codex' : ''}, ${live ? tr('aberta') : tr('última atividade {0} às {1}', [dayLabel(s.lastAt, now).toLowerCase(), formatClock(s.lastAt, false)])}`);
+    setAttr(btn, 'aria-label', `${title}, ${project}, ${account?.name ?? s.account}${prov ? `, ${prov}` : ''}, ${live ? tr('aberta') : tr('última atividade {0} às {1}', [dayLabel(s.lastAt, now).toLowerCase(), formatClock(s.lastAt, false)])}`);
     btn.addEventListener('click', () => {
       this.hide();
       this.terminal.openSession(s, this.button);

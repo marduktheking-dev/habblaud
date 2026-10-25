@@ -10,6 +10,7 @@ import {
   enterSends,
   isSettled,
   messageText,
+  OPENCODE_CLI_HINT,
   PLUGIN_HINT,
   pollDelay,
   sendStatusText,
@@ -109,6 +110,18 @@ describe('caixa de mensagem (peças puras)', () => {
     expect(composerMode(codex(), { ...ON, enabled: false })).toEqual({ kind: 'off', text: 'Para responder, use o Codex' });
     expect(composerMode(codex({ kind: 'sub', parentId: 'acc:1' }), ON).kind).toBe('off');
     expect(composerMode(codex({ status: 'offline' }), ON)).toEqual({ kind: 'off', text: 'Sessão encerrada' });
+  });
+
+  it('OpenCode: recebe pelo CLI (nada de mod:install) e, sem o CLI, a dica diz isso', () => {
+    const oc = (over: Partial<AgentInfo> = {}) => agent({ provider: 'opencode', canMessage: undefined, ...over });
+    expect(composerMode(oc(), ON)).toEqual({ kind: 'hint', text: OPENCODE_CLI_HINT });
+    expect(OPENCODE_CLI_HINT).toMatch(/^O escritório não consegue entregar ao OpenCode agora/);
+    // A dica do Claude Code (mod:install) não vale para o OpenCode e não pode aparecer no lugar dela.
+    expect(composerMode(oc(), ON)).not.toEqual({ kind: 'hint', text: PLUGIN_HINT });
+    // Com o CLI no PATH o servidor marca canMessage e a caixa fica pronta.
+    expect(composerMode(agent({ provider: 'opencode', canMessage: true }), ON)).toEqual({ kind: 'ready' });
+    expect(composerMode(oc(), { ...ON, enabled: false })).toEqual({ kind: 'off', text: 'Para responder, use o terminal do OpenCode' });
+    expect(composerMode(oc({ status: 'offline' }), ON)).toEqual({ kind: 'off', text: 'Sessão encerrada' });
   });
 
   it('Codex: "Entregue" é a fila da sessão; dica e prazo falam do Codex', () => {

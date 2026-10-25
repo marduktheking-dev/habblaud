@@ -8,7 +8,9 @@ import {
   fallbackShort,
   hasCodexPermission,
   isCodex,
+  isOpenCode,
   looksLikeCodexId,
+  looksLikeOpenCodeId,
   providerOf,
   showsProviderTag,
 } from './provider';
@@ -18,19 +20,28 @@ describe('ferramenta (Claude Code ou Codex)', () => {
     expect(providerOf(undefined)).toBe('claude');
     expect(providerOf({})).toBe('claude');
     expect(providerOf({ provider: 'codex' })).toBe('codex');
+    expect(providerOf({ provider: 'opencode' })).toBe('opencode');
     expect(isCodex({ provider: 'codex' })).toBe(true);
     expect(isCodex({ provider: 'claude' })).toBe(false);
     expect(isCodex(null)).toBe(false);
+    expect(isOpenCode({ provider: 'opencode' })).toBe(true);
+    expect(isOpenCode({ provider: 'codex' })).toBe(false);
+    expect(isOpenCode(undefined)).toBe(false);
   });
 
-  it('id com cara de pasta do Codex (só quando a conta já não está no snapshot)', () => {
+  it('id com cara de pasta do Codex ou do OpenCode (só quando a conta já não está no snapshot)', () => {
     for (const id of ['.codex', 'demo:.codex', '.codex-trabalho', '.codex~2', '/Users/ana/.codex', 'codex']) expect(looksLikeCodexId(id), id).toBe(true);
     for (const id of ['.claude', '.claude-conta2', 'demo:.claude', 'meucodex', '.codexy', '']) expect(looksLikeCodexId(id), id).toBe(false);
-    // Com a conta à mão, vale o provider dela; sem ela, a dica de quem chamou e, por fim, o id.
+    for (const id of ['opencode', 'demo:opencode', 'opencode~2', '/home/ana/opencode']) expect(looksLikeOpenCodeId(id), id).toBe(true);
+    for (const id of ['.opencode', '.claude', 'meuopencode', 'opencodeX', '']) expect(looksLikeOpenCodeId(id), id).toBe(false);
+    // Com a conta à mão, vale o provider dela; sem ela, a dica de quem chamou e, por fim, o jeito do id.
     expect(accountProvider({ provider: 'codex' }, '.claude')).toBe('codex');
     expect(accountProvider({}, '.codex')).toBe('claude');
+    expect(accountProvider({ provider: 'opencode' }, '.claude')).toBe('opencode');
     expect(accountProvider(undefined, '.claude', 'codex')).toBe('codex');
     expect(accountProvider(undefined, '.codex')).toBe('codex');
+    expect(accountProvider(undefined, 'opencode')).toBe('opencode');
+    expect(accountProvider(undefined, 'x', 'opencode')).toBe('opencode');
     expect(accountProvider(undefined, 'x')).toBe('claude');
   });
 
@@ -39,6 +50,7 @@ describe('ferramenta (Claude Code ou Codex)', () => {
     expect(fallbackShort('.claude')).toBe('?');
     expect(fallbackShort('.codex')).toBe('X');
     expect(fallbackShort('.codex-trabalho')).toBe('T');
+    expect(fallbackShort('opencode')).toBe('O');
     expect(fallbackShort('.codex~2')).toBe('X');
     expect(fallbackShort('demo:.codex')).toBe('X');
     expect(fallbackShort('minha-conta')).toBe('M');
@@ -61,13 +73,17 @@ describe('ferramenta (Claude Code ou Codex)', () => {
     expect(accountChipLabel(undefined, '', 'claude')).toBe('Conta desconhecida');
   });
 
-  it('escritório vazio: atalhos só das contas do Claude Code; o Codex entra quando há conta dele', () => {
+  it('escritório vazio: atalhos só das contas do Claude Code; as outras ferramentas entram quando há conta delas', () => {
     const c = { short: 'C' };
     const d = { short: 'D' };
     const x = { short: 'X', provider: 'codex' as const };
+    const o = { short: 'O', provider: 'opencode' as const };
     expect(emptyOfficeHint([c, d])).toBe('Abra o Claude Code em qualquer projeto (atalhos c ou d) e veja seu agente chegar.');
     expect(emptyOfficeHint([c, d, x])).toBe('Abra o Claude Code (atalhos c ou d) ou o Codex em qualquer projeto e veja seu agente chegar.');
     expect(emptyOfficeHint([x])).toBe('Abra o Claude Code ou o Codex em qualquer projeto e veja seu agente chegar.');
+    expect(emptyOfficeHint([c, d, o])).toBe('Abra o Claude Code (atalhos c ou d) ou o OpenCode em qualquer projeto e veja seu agente chegar.');
+    expect(emptyOfficeHint([o])).toBe('Abra o Claude Code ou o OpenCode em qualquer projeto e veja seu agente chegar.');
+    expect(emptyOfficeHint([c, d, x, o])).toBe('Abra o Claude Code (atalhos c ou d), o Codex ou o OpenCode em qualquer projeto e veja seu agente chegar.');
     expect(emptyOfficeHint([])).toBe('Abra o Claude Code em qualquer projeto e veja seu agente chegar.');
   });
 

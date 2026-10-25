@@ -13,7 +13,7 @@ import { setQuiet } from '../log';
 import { NameStore } from '../model/names';
 import { Office } from '../model/office';
 import { openMainAgent, SessionHistory } from '../sources/history';
-import { HistorySet, type HistoryProvider } from '../sources/source';
+import { HistorySet, type HistoryProvider, type HistoryResolveResult } from '../sources/source';
 import { encodeCwd } from '../sources/watcher';
 import { appendLines, L, symlinkOrSkip, tempDir, writeLines } from '../test/fixtures';
 import { createApiHandler } from './app';
@@ -326,6 +326,62 @@ describe('histórico de sessões: SSE da sessão encerrada', () => {
       });
       s.close();
       await waitFor(() => expect(env.terminals.size).toBe(0));
+    } finally {
+      await env.close();
+    }
+  });
+});
+
+describe('histórico de sessões: conversa ao vivo (sem transcript em arquivo)', () => {
+  const OID = 'ses_111111111111111111111111';
+  /** Provedor fictício da conta ".opencode": resolve devolve `live` (banco), não arquivo. */
+  const openCodeHistory = (): HistoryProvider => {
+    let n = 0;
+    return {
+      provider: 'opencode',
+      hasAccount: (a) => a === '.opencode',
+      list: async () => [
+        { account: '.opencode', provider: 'opencode', sessionId: OID, projectDir: '/projetos/loja', lastAt: Date.now() + 120_000, size: 0, open: false, title: 'do banco' },
+      ],
+      resolve: (_account, sessionId): HistoryResolveResult =>
+        sessionId === OID
+          ? {
+              live: () => ({
+                load: (limit: number) => ({
+                  entries: [{ kind: 'user', id: `db-${++n}`, at: 1, text: 'pergunta vinda do banco' } as TerminalEntry].slice(0, limit),
+                  truncated: false,
+                }),
+                poll: () => [{ kind: 'assistant', id: `db-r-${n}`, at: 2, text: 'resposta nova' } as TerminalEntry],
+              }),
+            }
+          : { status: 404, error: 'sessão não encontrada' },
+    };
+  };
+
+  it('listagem junta o provedor e o terminal abre com o init vindo da conversa ao vivo', async () => {
+    const env = await serve({ extra: openCodeHistory });
+    try {
+      const body = JSON.parse((await request(env.base, '/api/sessions/recent')).body) as RecentSessionsResponse;
+      expect(body.sessions[0]).toMatchObject({ account: '.opencode', sessionId: OID, provider: 'opencode', title: 'do banco' });
+
+      const s = await request(env.base, terminalRoute('.opencode', OID));
+      expect(s.status).toBe(200);
+      await waitFor(() => expect(s.events.filter((e) => e.event === 'init')).toHaveLength(1));
+      const init = s.events[0].data as TerminalInit;
+      expect(init.agentId).toBe(`session:.opencode:${OID}`);
+      expect(init.entries.map((e) => e.kind)).toEqual(['user']);
+
+      // O polling do ramo ao vivo acrescenta o que o provedor devolveu depois.
+      await waitFor(() => expect(s.events.some((e) => e.event === 'append' && JSON.stringify(e.data).includes('resposta nova'))).toBe(true));
+      s.close();
+
+      // Sessão desconhecida continua 404 (o ramo live não vaza resposta).
+      expect((await request(env.base, terminalRoute('.opencode', 'ses_999999999999999999999999'))).status).toBe(404);
+      // Conta desconhecida: HistorySet manda para o provedor padrão (Claude), com os erros de sempre —
+      // id que não é UUID dele responde 400, e um UUID inexistente, 404.
+      expect(JSON.parse((await request(env.base, terminalRoute('.outra', OID))).body)).toEqual({ error: 'id de sessão inválido' });
+      expect((await request(env.base, terminalRoute('.outra', SID))).status).toBe(404);
+      expect(env.terminals.size).toBe(0);
     } finally {
       await env.close();
     }

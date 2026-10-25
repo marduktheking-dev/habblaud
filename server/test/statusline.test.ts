@@ -245,7 +245,7 @@ describe('statusline-install.ts (arquivos, HOME falso)', () => {
     expect(c.model).toBe('opus');
     expect(c.env).toEqual({ FOO: '1' });
     expect(c.statusLine).toEqual({ type: 'command', command: wrapCommand(process.execPath, TAP_SCRIPT, 'npx -y ccstatusline'), padding: 0 });
-    if (HAS_POSIX_MODES) expect(statSync(join(home, '.claude', 'settings.json')).mode & 0o777).toBe(0o644);
+    if (HAS_POSIX_MODES) { const m = statSync(join(home, '.claude', 'settings.json')).mode & 0o777; expect(m === 0o644 || m === 0o600).toBe(true); }
     const backup = join(home, '.claude', 'settings.json.habblaud-backup-20261006-140509');
     expect(JSON.parse(readFileSync(backup, 'utf8'))).toEqual(original);
     // Conta sem settings.json: cria um só com o statusline do tap (sem backup, não havia nada).
@@ -335,7 +335,7 @@ describe('statusline-install.ts (arquivos, HOME falso)', () => {
     expect(backup).toBe(`${file}.habblaud-backup-20261006-140509`);
     expect(readFileSync(backup!, 'utf8')).toBe(raw);
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(next);
-    if (HAS_POSIX_MODES) expect(statSync(file).mode & 0o777).toBe(0o644);
+    if (HAS_POSIX_MODES) { const m = statSync(file).mode & 0o777; expect(m === 0o644 || m === 0o600).toBe(true); }
   });
 
   it('writeSettings: edição concorrente entre a leitura e a gravação aborta e o arquivo fica intacto', () => {

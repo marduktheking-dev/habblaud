@@ -558,6 +558,11 @@ e espera o próximo pedido, dar uma instrução nova ou corrigir o rumo, sem pro
   Leia o aviso em [Privacidade e segurança](#privacidade-e-segurança).
   Pelo [celular com login](#celular-com-login-e-https-aprovando-pedidos), só com `messages` no `HABBLAUD_REMOTE_ALLOW`.
 - No modo demonstração, os agentes fictícios também recebem mensagens (de mentira).
+- **OpenCode:** os agentes do OpenCode recebem pelo próprio CLI (`opencode run --session <id> "<texto>"`), que o
+  servidor roda sozinho no modo Node: o CLI (`opencode-termux` ou `opencode`) precisa estar no PATH de quem roda o
+  Habblaud, ou aponte `HABBLAUD_OPENCODE_BIN`. No Docker não há entrega (o container não vê o seu OpenCode). O modelo
+  da sessão não é tocado (nunca passamos `--model`) e nenhuma permissão é aprovada sozinha (nunca passamos `--auto`):
+  se o agente pedir permissão, ela continua parando na tela do OpenCode.
 
 ### Editar o personagem
 
@@ -575,6 +580,35 @@ agente principal e clique no lápis ao lado do nome (**Editar personagem**). No 
 A escolha fica em `~/.habblaud/names.json` e some depois de 60 dias sem uso do projeto. O editor tem a mesma trava do
 terminal: o lápis só aparece com o terminal ligado (sem `HABBLAUD_TERMINAL=0`) e o acesso local, isto
 é, com o Habblaud acessível apenas pelo próprio computador e aberto por `http://localhost`.
+
+### OpenCode
+
+Sessões do **OpenCode** (`opencode-termux`, o pacote do Termux, ou `opencode` 2.x) entram no mesmo escritório: cada
+projeto é uma sala — a mesma do Claude Code — e cada sessão, um personagem com o selo **OPENCODE**. Quem conta o que
+está acontecendo no dia a dia é o plugin local, que manda só ids, a pasta do projeto, o nome da ferramenta, o agente e o
+modelo — **nunca** o texto do prompt, a resposta, os argumentos das ferramentas (comandos, caminhos, diffs) nem
+credenciais. O modelo escolhido por você não é tocado.
+
+O **terminal** e os contadores são a exceção: eles leem o banco do OpenCode (`opencode.db`) — sempre **aberto só para
+leitura** e nunca copiado para `~/.habblaud`. De lá saem a conversa mostrada (prompt, resposta e ferramentas, como no
+terminal do Claude Code) e os totais de ferramentas, tokens e custo da sessão. Como o resto do terminal, isso só vale
+com acesso local (`http://localhost` ou `http://127.0.0.1`); pelo celular (segunda porta) a conversa não aparece. As
+credenciais do OpenCode continuam sem ser lidas.
+
+```bash
+npm run opencode:install    # copia o plugin para <pasta do OpenCode>/plugins/habblaud-events.ts (backup antes)
+npm run opencode:status     # confere (e diz se o Habblaud responde)
+npm run opencode:uninstall  # tira só esse arquivo (os outros plugins ficam)
+```
+
+- O plugin vale para as sessões abertas **depois** da instalação e roda no processo compartilhado
+  (`opencode serve --service`), que sobrevive às telas. Por isso não há sinal de vida incondicional: a presença no
+  escritório vem dos eventos reais e some quando a sessão fecha; com o Habblaud fora do ar nada quebra no OpenCode.
+- O endereço do Habblaud fica em `~/.habblaud/opencode-plugin.json` (`{ "url": "http://127.0.0.1:4747" }`, gravado pelo
+  instalador): trocar de porta não pede reinstalar o plugin.
+- **Mandar mensagens** ao OpenCode funciona pelo CLI do OpenCode (veja [Mandar mensagens](#mandar-mensagens)); no
+  Docker não há entrega.
+- `HABBLAUD_OPENCODE=0` desliga o OpenCode no escritório.
 
 ### Codex
 
@@ -727,6 +761,7 @@ Tudo funciona sem configurar nada. Se precisar ajustar, use variáveis de ambien
 | `HABBLAUD_CODEX` | ligado | `0` desliga o Codex no escritório. |
 | `HABBLAUD_CODEX_DIRS` | detecção automática | Pastas do Codex, separadas por vírgula (no lugar de `~/.codex*` e `CODEX_HOME`). |
 | `HABBLAUD_CODEX_BIN` | `codex` do PATH (no Windows, `codex.exe`) | O binário do Codex que entrega as mensagens (`codex queue`), no modo Node ou no `npm run codex:bridge`. |
+| `HABBLAUD_OPENCODE_BIN` | `opencode-termux` e depois `opencode`, do PATH | O CLI do OpenCode que entrega as mensagens (`opencode run --session`), no modo Node. |
 | `HABBLAUD_UPDATE_CHECK` | ligado | `0` desliga a verificação de versão nova (uma consulta às releases do repositório no GitHub a cada 6 h). |
 | `HABBLAUD_LANG` | idioma do sistema (menos inglês), senão `pt-BR` | Idioma dos textos montados pelo servidor (atividades, avisos, logs): `pt-BR`, `en`, `es` ou `fr`. A interface segue o navegador ou a escolha em Configurações › Idioma. Ver [Idiomas](#idiomas). |
 | `HABBLAUD_ACCOUNTS` | — | JSON para personalizar nome, letra ou cor, casado pelo nome da pasta da conta. Ex.: `[{"id":".claude-conta2","name":"Trabalho","short":"T","color":"#5cc97b"}]`. |
@@ -895,7 +930,7 @@ mod/      o mod do Habblaud e os plugins de permissões e de mensagens (plugins 
 | `POST /api/rooms/rename` | `{"id": sala, "name": nome}` renomeia a sala (vazio volta ao nome da pasta); o nome fica em `rooms.json`, na pasta de dados. Só com acesso local. |
 | `GET /api/mod/summary` | Para o mod do Claude Code: versão, quantos agentes, quantos trabalham e quem precisa de você (sem o demo e, com `?account=&session=`, sem a própria sessão). |
 | `/api/permissions…` | Responder pelo escritório: o hook de permissão registra o pedido (permissão ou pergunta) e espera; a página busca o detalhe e decide ou responde. Só com acesso local. |
-| `/api/messages…` e `/api/mod/inbox…` | Mandar mensagens: a página deixa a mensagem na fila e acompanha a entrega; o plugin `habblaud-mensagens` a busca, entrega à sessão e confirma. Só com acesso local. |
+| `/api/messages…` e `/api/mod/inbox…` | Mandar mensagens: a página deixa a mensagem na fila e acompanha a entrega; o plugin `habblaud-mensagens` a busca, entrega à sessão e confirma (o Codex vai pelo `codex queue` e o OpenCode pelo CLI dele). Só com acesso local. |
 | `POST /api/codex/events` | Eventos dos hooks do Codex (sessão aberta, ferramenta, aprovação, fim do turno). Só com acesso local. |
 | `/api/codex/bridge/poll` e `/ack` | O `npm run codex:bridge` busca as mensagens para o Codex e confirma a entrega. Só com acesso local. |
 
@@ -953,7 +988,8 @@ das contas (letra, e-mail, organização) são lidos no host pelo `docker:up` e 
   `HABBLAUD_BIND` local no Docker) — não há como
   ligá-lo com a porta exposta — e cada pedido precisa vir por `localhost`/`127.0.0.1`: IPs da rede e nomes de
   `HABBLAUD_ALLOWED_HOSTS` (proxies, túneis) são recusados. Segredos são mascarados e textos longos truncados antes
-  de chegar ao navegador; no modo demonstração, a conversa é fictícia. `HABBLAUD_TERMINAL=0` desliga de vez.
+  de chegar ao navegador; no modo demonstração, a conversa é fictícia. Na conversa do OpenCode, o Habblaud lê o banco
+  dele (`opencode.db`) sempre em modo leitura e não guarda nada em `~/.habblaud`. `HABBLAUD_TERMINAL=0` desliga de vez.
   A única exceção é o [celular com login](#celular-com-login-e-https-aprovando-pedidos), e só com `terminal` no `HABBLAUD_REMOTE_ALLOW`.
 - **Linha do tempo do timelapse:** só os resumos que já aparecem na tela (atividade em uma linha, status, títulos,
   uso das contas, sem e-mails, comandos completos ou conversas), gravados em `~/.habblaud/timeline/` e apagados depois

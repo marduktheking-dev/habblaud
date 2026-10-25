@@ -140,6 +140,10 @@ export function projectWithReport(input: ProjectionInput, ids: WorldIdSource, no
   for (const a of input.agents) {
     if (isDemoId(a.id) || isDemoId(a.roomId) || !roomIds.has(a.roomId)) continue;
     if ((a.kind !== 'main' && a.kind !== 'sub') || !isWorldStatus(a.status)) continue;
+    // O protocolo do mundo (WorldAgent.provider) só tem claude|codex: um agente de outra ferramenta (o OpenCode)
+    // fica de fora em vez de virar 'claude' (mandar 'opencode' seria recusado pelo servidor; dizer que é Claude
+    // seria falso). O escritório local continua com ele normalmente.
+    if (a.provider && a.provider !== 'claude' && a.provider !== 'codex') continue;
     const list = byRoom.get(a.roomId);
     if (list) list.push(a);
     else byRoom.set(a.roomId, [a]);

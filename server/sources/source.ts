@@ -12,7 +12,7 @@
 // depois, SEMPRE em par (num `finally`, inclusive num boot assíncrono). O Office conta os boots: enquanto alguma
 // fonte boota não há avisos e o feed fica guardado para sair em ordem cronológica no fim do último boot (uma fonte
 // que nunca chamasse endBoot calaria os avisos de todas).
-import type { Provider, RecentSession, SourceInfo } from '../../shared/types';
+import type { Provider, RecentSession, SourceInfo, TerminalEntry } from '../../shared/types';
 import { errMsg, log } from '../log';
 import { HISTORY_LIMIT } from './history';
 import { createTerminalParser, type TerminalParser } from './terminal';
@@ -36,6 +36,22 @@ export interface AgentSource {
    * Ausente, ou undefined, = o do Claude Code (createTerminalParser).
    */
   terminalParser?(agentId: string): TerminalParser | undefined;
+  /**
+   * Conversa ao vivo de um agente desta fonte quando ela não tem transcript em arquivo (o OpenCode lê o próprio
+   * banco). Ausente = a fonte só oferece transcript por arquivo (transcriptPathOf).
+   */
+  liveConversation?(agentId: string): LiveConversation | undefined;
+}
+
+/**
+ * Conversa ao vivo de um agente, derivada na hora (sem arquivo em disco). Cada conexão do terminal pede a própria
+ * instância: ela guarda o que já foi entregue e só devolve o que é novo.
+ */
+export interface LiveConversation {
+  /** Conversa recente para o `init`: as últimas `limit` entradas, da mais antiga para a mais recente. */
+  load(limit: number): { entries: TerminalEntry[]; truncated: boolean };
+  /** Entradas novas desde a chamada anterior (vazio se nada mudou). */
+  poll(): TerminalEntry[];
 }
 
 /** Todas as fontes de agentes ligadas, vistas como uma só. */
@@ -110,16 +126,33 @@ export class SourceSet {
     const owner = this.list.find((s) => s.transcriptPathOf(agentId) !== undefined);
     return owner?.terminalParser?.(agentId) ?? createTerminalParser();
   }
+
+  /** Conversa ao vivo de um agente sem transcript em arquivo (a primeira fonte que a oferece). */
+  liveConversation(agentId: string): LiveConversation | undefined {
+    for (const s of this.list) {
+      const conv = s.liveConversation?.(agentId);
+      if (conv) return conv;
+    }
+    return undefined;
+  }
 }
 
 // ------------------------------------------------------------------ histórico do terminal
 
-/** Sessão do histórico achada: o arquivo da conversa e o parser do terminal para ele. */
-export interface HistorySession {
-  path: string;
-  /** Parser NOVO a cada chamada (o terminal cria outro quando o arquivo é truncado ou substituído). */
-  createParser: () => TerminalParser;
-}
+/**
+ * Sessão do histórico achada: ou o arquivo da conversa com o parser do terminal para ele, ou uma conversa ao vivo
+ * derivada na hora (o OpenCode lê o próprio banco; não existe transcript em arquivo por sessão).
+ */
+export type HistorySession =
+  | {
+      path: string;
+      /** Parser NOVO a cada chamada (o terminal cria outro quando o arquivo é truncado ou substituído). */
+      createParser: () => TerminalParser;
+    }
+  | {
+      /** Conversa derivada do banco: cada conexão do terminal pede a própria instância. */
+      live: () => LiveConversation;
+    };
 
 /** Resultado de resolve(): a sessão ou o erro HTTP. */
 export type HistoryResolveResult = HistorySession | { status: 400 | 404; error: string };
@@ -159,6 +192,11 @@ export class HistorySet implements SessionLookup {
 
   add(provider: HistoryProvider): void {
     this.list_.push(provider);
+  }
+
+  /** Fecha o que os provedores seguram (handles do SQLite do OpenCode). Chamado no shutdown. */
+  close(): void {
+    for (const p of this.list_) (p as { close?: () => void }).close?.();
   }
 
   /** Um provedor que falha não derruba a listagem dos outros (só vai para o log); todos falhando, a falha sobe. */

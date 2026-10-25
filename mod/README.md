@@ -123,6 +123,25 @@ mesma trava do terminal e das permissões (porta presa ao `127.0.0.1` e cabeçal
 não desligado (`0`, `false`, `off` ou `no` desligam). Qualquer processo desta máquina que fale com o Habblaud
 consegue mandar uma mensagem às sessões com o plugin: por isso a trava local.
 
+## `habblaud-opencode` — eventos do OpenCode
+
+Não é um plugin do Claude Code: é o plugin do **OpenCode**, que mora aqui só para ficar junto das outras pontes.
+`npm run opencode:install` copia `habblaud-opencode/plugin.ts` para a pasta de plugins do OpenCode
+(`<pasta>/plugins/habblaud-events.ts`, uma por conta, com backup antes de regravar); `opencode:uninstall` tira só
+esse arquivo (os outros plugins ficam) e `opencode:status` mostra, por pasta, se ele está lá e se o Habblaud
+responde (opções: `--dry-run`, `--conta <id>`, `--port <n>`). O plugin roda no processo compartilhado
+(`opencode serve --service`, que sobrevive às telas) e manda a `POST http://127.0.0.1:<porta>/api/opencode/events`
+só o que muda QUEM está trabalhando (sessão, turno, ferramenta, estado de execução, pedido de permissão, compactação
+da memória, retentativa da API e um aviso de uso novo — os números, porém, vêm do banco dele): ids, a pasta do
+projeto, o nome da ferramenta, o agente e o modelo — nunca o prompt, a resposta, os argumentos (comandos,
+caminhos, diffs), tokens ou credenciais; o modelo escolhido nunca é tocado. As sessões de shell do terminal
+(`sh_…`, uma por comando) ficam de fora: não são gente trabalhando. A porta fica em
+`~/.habblaud/opencode-plugin.json` (`{ "url": ... }`, gravado pelo instalador), então trocar de porta não pede
+reinstalar o plugin. Com o Habblaud fora do ar nada quebra: cada entrega é "fire-and-forget", com timeout curto.
+
+Diferente dos mods do Claude Code, este arquivo é um módulo Node puro (só `node:*`) e entra no `npm run typecheck`
+(`server/tsconfig.json`); o teste que o liga à fonte do Habblaud é `server/test/opencode-plugin.test.ts`.
+
 ## Desenvolver
 
 ```bash
@@ -136,5 +155,6 @@ npx tsc -p mod/habblaud                              # tipos (depois de carregar
 
 Ao carregar um mod, o Claude Code grava os tipos da versão instalada em `<pasta>/.claude-plugin/types/` e um
 `<pasta>/tsconfig.json` que os estende; os dois são gerados e ficam fora do git (`mod/.gitignore`). Os testes dos
-mods importam `claude-code/testing` e só rodam pelo `claude plugin test`: o `npm test` (vitest) e o
-`npm run typecheck` não olham esta pasta.
+mods do Claude Code importam `claude-code/testing` e só rodam pelo `claude plugin test`: o `npm test` (vitest) e o
+`npm run typecheck` não olham essas pastas (a exceção é o `habblaud-opencode`, um módulo Node puro: o typecheck o
+verifica e o teste dele roda no vitest).

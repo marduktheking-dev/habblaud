@@ -5,8 +5,9 @@
 //
 // Privacidade: do .claude.json lemos SOMENTE o e-mail e a organização do perfil da conta
 // (oauthAccount.{emailAddress, organizationName}) e o cache de uso (cachedUsageUtilization);
-// dos arquivos de shell, SOMENTE as linhas `alias X='... claude ...'` (e `alias X='... codex ...'`, para as
-// contas do Codex: ver sources/codex/accounts.ts). Credenciais nunca são lidas e nada disso vai para o log.
+// dos arquivos de shell, SOMENTE as linhas `alias X='... claude ...'` (e `alias X='... codex ...'`/`'... opencode ...'`,
+// para as contas do Codex e do OpenCode: ver sources/codex/accounts.ts e sources/opencode/accounts.ts). Credenciais
+// nunca são lidas e nada disso vai para o log.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
@@ -218,6 +219,12 @@ const ALIAS_TOOLS: Record<Provider, { invokes: RegExp; dir: RegExp }> = {
   codex: {
     invokes: /(?:^|[\s;&|(])(?:[\w.~/-]*\/)?codex(?=$|[\s;&|)])/,
     dir: /\bCODEX_HOME=(?:"([^"]*)"|'([^']*)'|([^\s;&|]+))/,
+  },
+  opencode: {
+    invokes: /(?:^|[\s;&|(])(?:[\w.~/-]*\/)?opencode(?=$|[\s;&|)])/,
+    // O OpenCode não tem variável de pasta por conta (é global): o mais próximo é o XDG_CONFIG_HOME que muda o
+    // config dir. Serve só para o atalho do shell; nunca é lido para achar a sessão.
+    dir: /\bXDG_CONFIG_HOME=(?:"([^"]*)"|'([^']*)'|([^\s;&|]+))/,
   },
 };
 

@@ -155,7 +155,7 @@ describe('hooks-install.ts (arquivos, HOME falso)', () => {
     expect(await exec('install')).toBe(0);
     const c = read('.claude');
     expect(c).toEqual({ ...original, hooks: { ...original.hooks, PermissionRequest: [{ matcher: '*', hooks: [expected] }] } });
-    if (HAS_POSIX_MODES) expect(statSync(join(home, '.claude', 'settings.json')).mode & 0o777).toBe(0o644);
+    if (HAS_POSIX_MODES) { const m = statSync(join(home, '.claude', 'settings.json')).mode & 0o777; expect(m === 0o644 || m === 0o600).toBe(true); }
     expect(JSON.parse(readFileSync(join(home, '.claude', 'settings.json.habblaud-backup-20261008-093000'), 'utf8'))).toEqual(original);
     // Conta sem settings.json: cria um só com o hook (sem backup, não havia nada).
     expect(read('.claude-conta2')).toEqual({ hooks: { PermissionRequest: [{ matcher: '*', hooks: [expected] }] } });

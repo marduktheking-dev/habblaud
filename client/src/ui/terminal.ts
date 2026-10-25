@@ -15,6 +15,7 @@ import { copyText, h, iconButton, prefersReducedMotion, setAttr, setHidden, setT
 import { calendarDayDiff, formatClock, formatDateTime, formatDuration, formatElapsed, relativeTime } from './format';
 import { ICONS } from './icons';
 import { maximizeButton, Movable } from './movable';
+import { access } from '../net/access';
 import type { PtyControl } from './pty';
 import { TermActions } from './termactions';
 import { TermTabs } from './termtabs';
@@ -49,6 +50,8 @@ export const PROMPT_PREVIEW_LINES = 24;
 
 export const TERMINAL_UNAVAILABLE_HINT = tr('O terminal só fica disponível quando o Habblaud roda com acesso local (bind 127.0.0.1)');
 const OPEN_ERROR = tr('Não foi possível abrir o terminal. O recurso só funciona no acesso local, com o agente ainda aberto.');
+/** Acesso local ok: o que falhou foi a conversa (sem transcript ainda, agente já saiu, banco sem a sessão). */
+const OPEN_ERROR_LOCAL = tr('Não foi possível abrir o terminal. O agente pode ainda não ter escrito nada nesta sessão (ou já ter saído do escritório).');
 const SESSION_OPEN_ERROR = tr('Não foi possível abrir a sessão. O histórico só funciona no acesso local, com o transcript ainda no disco.');
 /** Espera depois da última tecla antes de buscar (a busca percorre toda a conversa na tela). */
 const SEARCH_DEBOUNCE_MS = 120;
@@ -1336,7 +1339,7 @@ export class TerminalPanel implements UiComponent, TerminalControl {
   private renderState(): void {
     setHidden(this.reconnEl, this.conn !== 'reconnecting');
     setHidden(this.alertEl, this.conn !== 'failed');
-    setText(this.alertText, this.session ? SESSION_OPEN_ERROR : OPEN_ERROR);
+    setText(this.alertText, this.session ? SESSION_OPEN_ERROR : access().terminal ? OPEN_ERROR_LOCAL : OPEN_ERROR);
     setHidden(this.note, !(this.loaded && this.truncated));
     const empty = this.rows.size === 0;
     const filteredOut = !empty && this.visibleRows === 0;

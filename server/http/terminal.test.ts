@@ -488,6 +488,55 @@ describe('terminal: transporte', () => {
   });
 });
 
+// ------------------------------------------------------------------ agente sem transcript em arquivo (OpenCode)
+
+describe('terminal: agente sem transcript em arquivo (OpenCode)', () => {
+  const OC = 'opencode:ses_1';
+  /** Agente do OpenCode no escritório (sem caminho de transcript: a conversa vem do banco, por liveFor). */
+  const addOpenCode = (env: Served, id = OC, sessionId = 'ses_1') =>
+    env.office.addMain({ id, provider: 'opencode', account: 'opencode', sessionId, cwd: '/p/loja', role: 'Agente principal (OpenCode)', startedAt: Date.now(), status: 'working' });
+
+  it('usa a conversa ao vivo (liveFor): init com as últimas e append só do novo', async () => {
+    let extra: TerminalEntry[] = [];
+    const liveFor = (id: string) =>
+      id === OC
+        ? {
+            load: (limit: number) => ({ entries: [user('u1')].slice(-limit), truncated: false }),
+            poll: () => {
+              const out = extra;
+              extra = [];
+              return out;
+            },
+          }
+        : undefined;
+    const env = await serve({ streams: { liveFor } });
+    try {
+      addOpenCode(env);
+      const s = await open(env.base, route(OC));
+      expect(s.status).toBe(200);
+      await waitFor(() => expect(inits(s)).toHaveLength(1));
+      expect(inits(s)[0]).toEqual({ agentId: OC, entries: [user('u1')], truncated: false });
+      extra = [user('u2')];
+      await waitFor(() => expect(appendIds(s)).toEqual(['u2']));
+      s.close();
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('OpenCode sem conversa disponível: 404 com a mensagem própria, não a do transcript', async () => {
+    const env = await serve();
+    try {
+      addOpenCode(env, 'opencode:ses_2', 'ses_2');
+      const r = await open(env.base, route('opencode:ses_2'));
+      expect(r.status).toBe(404);
+      expect(JSON.parse(r.body)).toEqual({ error: 'a conversa do OpenCode ainda não está disponível' });
+    } finally {
+      await env.close();
+    }
+  });
+});
+
 // ------------------------------------------------------------------ demo
 
 describe('terminal: agentes do demo', () => {

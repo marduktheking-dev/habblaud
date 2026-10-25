@@ -23,6 +23,7 @@ import { describeMessage, MESSAGE_MAX } from '../../shared/messages';
 import type { Activity, AgentInfo, InboxMessage, OutboxMessage } from '../../shared/types';
 import { errMsg, log } from '../log';
 import type { CodexQueueResult, CodexQueueRunner } from './codex';
+import { canDeliver as canDeliverOpenCode, deliver as deliverOpenCode, type DeliverResult } from './opencode';
 import { tr } from '../../shared/i18n';
 
 /** Sessão que perguntou pela caixa de entrada há até este tempo: recebe mensagens (canMessage). */
@@ -40,6 +41,8 @@ export const MAX_TEXT = MESSAGE_MAX;
 export const MAX_OPEN = 5;
 /** Mensagens entregues ao plugin por rodada. */
 export const INBOX_BATCH = 5;
+/** De quanto em quanto tempo o CLI do OpenCode é procurado no PATH (o teste custa um stat por pasta). */
+export const OPENCODE_BIN_TTL_MS = 10_000;
 
 export const ERR_NOT_FETCHED = tr('a sessão não buscou a mensagem: o plugin habblaud-mensagens está instalado e a sessão aberta?');
 export const ERR_NOT_CONFIRMED = tr('a sessão não confirmou a entrega');
@@ -53,6 +56,9 @@ export const ERR_CODEX_SLOW = tr('o Codex demorou demais com as mensagens anteri
 export const ERR_CODEX_NOT_CONFIRMED = tr('o auxiliar do Codex não confirmou a entrega');
 export const ERR_CODEX_HOME = tr('a pasta da conta do Codex deste agente é desconhecida');
 export const ERR_CODEX_REFUSED = tr('o codex queue não aceitou a mensagem');
+export const ERR_OPENCODE_UNAVAILABLE =
+  tr('não há como entregar ao OpenCode agora: o CLI (opencode-termux ou opencode) precisa estar no PATH de quem roda o Habblaud, ou aponte HABBLAUD_OPENCODE_BIN');
+export const ERR_OPENCODE_REFUSED = tr('o OpenCode não aceitou a mensagem');
 
 const ERROR_MAX = 300;
 const ID_MAX = 300;
@@ -74,6 +80,14 @@ export interface CodexDeliveryOptions {
   homeOf: (account: string) => string | undefined;
 }
 
+/** Entregador do OpenCode (`opencode run --session <id> <texto>`): o próprio servidor roda o CLI. */
+export interface OpenCodeDeliveryOptions {
+  /** Há CLI para entregar? (o padrão procura `opencode-termux`/`opencode` no PATH e respeita HABBLAUD_OPENCODE_BIN). */
+  available: () => boolean;
+  /** Entrega o texto na sessão (o padrão roda o CLI e resolve quando o processo sobe). */
+  deliver: (sessionId: string, text: string) => Promise<DeliverResult>;
+}
+
 export interface MessageRegistryOptions {
   office: OfficeLike;
   /** Agente do demo (Office.demoAgent): esses só existem no snapshot. */
@@ -82,6 +96,8 @@ export interface MessageRegistryOptions {
   demoDeliver?: (agentId: string, text: string) => boolean;
   /** Mensagens aos agentes do Codex; ausente = eles não recebem. */
   codex?: CodexDeliveryOptions;
+  /** Mensagens aos agentes do OpenCode; ausente = o CLI do PATH (messages/opencode.ts). */
+  opencode?: OpenCodeDeliveryOptions;
   now?: () => number;
   /** Intervalo do relógio interno (start). */
   tickMs?: number;
@@ -123,6 +139,10 @@ interface Entry {
   demo?: boolean;
   /** Mensagem a um agente do Codex: sai pelo entregador do Codex ('node' = o servidor rodou; 'bridge' = o auxiliar). */
   codex?: true;
+  /** Mensagem a um agente do OpenCode: sai pelo CLI. */
+  opencode?: true;
+  /** Entrega em andamento (o processo do CLI ainda não respondeu): não repete a cada volta do relógio. */
+  pending?: boolean;
   via?: 'node' | 'bridge';
   /** Falhou por falta de confirmação: uma confirmação atrasada ainda corrige a situação. */
   late?: boolean;
@@ -152,7 +172,11 @@ const isFinal = (e: Entry) => e.msg.status === 'delivered' || e.msg.status === '
 function unavailableReason(a: AgentInfo, reachable: boolean): string | undefined {
   if (a.kind !== 'main') return tr('subagentes não recebem mensagens: mande para o agente principal');
   if (!present(a)) return tr('o agente já saiu do escritório');
-  if (!reachable) return a.provider === 'codex' ? ERR_CODEX_UNAVAILABLE : tr('a sessão não está com o plugin habblaud-mensagens conectado (npm run mod:install)');
+  if (!reachable) {
+    if (a.provider === 'codex') return ERR_CODEX_UNAVAILABLE;
+    if (a.provider === 'opencode') return ERR_OPENCODE_UNAVAILABLE;
+    return tr('a sessão não está com o plugin habblaud-mensagens conectado (npm run mod:install)');
+  }
   return undefined;
 }
 
@@ -186,6 +210,11 @@ export class MessageRegistry {
   private seen = new Map<string, number>();
   /** Última vez que o auxiliar do Codex no host buscou mensagens. */
   private bridgeAt?: number;
+  /** Última conferência do CLI do OpenCode no PATH e o resultado dela. */
+  private openBinAt?: number;
+  private openBin = false;
+  /** Entregador do OpenCode (o padrão é o CLI). */
+  private readonly opencode: OpenCodeDeliveryOptions;
   private timer: ReturnType<typeof setInterval> | null = null;
   private seq = 0;
   private readonly now: () => number;
@@ -202,6 +231,10 @@ export class MessageRegistry {
     this.sentTimeoutMs = opts.sentTimeoutMs ?? SENT_TIMEOUT_MS;
     this.keepMs = opts.keepMs ?? KEEP_MS;
     this.demoDeliveryMs = opts.demoDeliveryMs ?? DEMO_DELIVERY_MS;
+    this.opencode = opts.opencode ?? {
+      available: () => canDeliverOpenCode().ok,
+      deliver: (sessionId, text) => deliverOpenCode(sessionId, text),
+    };
   }
 
   start(): void {
@@ -234,12 +267,15 @@ export class MessageRegistry {
     const out = new Set<string>();
     for (const id of this.seen.keys()) if (this.canMessage(id)) out.add(id);
     if (this.codexAvailable()) for (const a of this.opts.office.list()) if (a.provider === 'codex' && a.kind === 'main' && present(a)) out.add(a.id);
+    if (this.opencodeAvailable()) for (const a of this.opts.office.list()) if (a.provider === 'opencode' && a.kind === 'main' && present(a)) out.add(a.id);
     return out;
   }
 
   canMessage(agentId: string): boolean {
     const a = this.opts.office.get(agentId);
     if (a?.provider === 'codex') return this.codexAvailable() && present(a) && a.kind === 'main';
+    // O OpenCode não tem plugin de mensagens: quem entrega é o CLI (`opencode run --session`), rodado daqui.
+    if (a?.provider === 'opencode') return this.opencodeAvailable() && present(a) && a.kind === 'main';
     const at = this.seen.get(agentId);
     if (at === undefined || this.now() - at >= this.presenceMs) return false;
     return present(a) && a.kind === 'main';
@@ -249,6 +285,15 @@ export class MessageRegistry {
   codexAvailable(): boolean {
     const c = this.opts.codex;
     return !!c && (!!c.run || this.bridgeRecent());
+  }
+
+  /** Há CLI do OpenCode para entregar? (o teste percorre o PATH: vale por alguns segundos). */
+  opencodeAvailable(): boolean {
+    const now = this.now();
+    if (this.openBinAt !== undefined && now - this.openBinAt < OPENCODE_BIN_TTL_MS) return this.openBin;
+    this.openBinAt = now;
+    this.openBin = this.opencode.available();
+    return this.openBin;
   }
 
   /**
@@ -273,6 +318,7 @@ export class MessageRegistry {
     const entry: Entry = { msg: { id, agentId, status: 'queued', createdAt: now, updatedAt: now }, text, activity: describeMessage(text), target: agent.sessionId };
     if (demo) entry.demo = true;
     else if (real?.provider === 'codex') entry.codex = true;
+    else if (real?.provider === 'opencode') entry.opencode = true;
     this.messages.set(id, entry);
     const out = { ...entry.msg };
     if (entry.codex) this.pumpCodex();
@@ -400,6 +446,38 @@ export class MessageRegistry {
         else if (now - e.msg.createdAt >= this.demoDeliveryMs) {
           if (this.opts.demoDeliver?.(e.msg.agentId, e.text)) this.finish(e, 'delivered', now);
           else this.fail(e, now, ERR_GONE);
+        }
+        continue;
+      }
+      if (e.opencode) {
+        const oa = this.opts.office.get(e.msg.agentId);
+        if (!present(oa)) {
+          this.fail(e, now, ERR_GONE);
+          continue;
+        }
+        if (oa.sessionId !== e.target) {
+          this.fail(e, now, ERR_SESSION_CHANGED);
+          continue;
+        }
+        if (!this.opencodeAvailable()) {
+          this.fail(e, now, ERR_OPENCODE_UNAVAILABLE);
+          continue;
+        }
+        if (e.msg.status === 'queued' && !e.pending) {
+          e.pending = true;
+          const sentAt = now;
+          this.opencode.deliver(oa.sessionId, e.text).then((r) => {
+            if (this.messages.get(e.msg.id) !== e) return;
+            e.pending = false;
+            if (e.msg.status !== 'sent') return;
+            const at = this.now();
+            if (r.ok) this.finish(e, 'delivered', at);
+            else this.fail(e, at, truncate(r.error ?? ERR_OPENCODE_REFUSED, ERROR_MAX) || ERR_OPENCODE_REFUSED);
+          });
+          this.setStatus(e, 'sent', sentAt);
+          e.sentAt = sentAt;
+        } else if (e.msg.status === 'sent' && now - (e.sentAt ?? now) >= this.sentTimeoutMs) {
+          this.fail(e, now, ERR_OPENCODE_REFUSED);
         }
         continue;
       }

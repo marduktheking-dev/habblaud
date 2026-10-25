@@ -10,6 +10,36 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Adicionado
+- **OpenCode (integração completa):** reconhece sessões do OpenCode como agentes no escritório. Novo provedor `opencode`, plugin local (`~/.config/opencode/plugins/habblaud-events.ts`) que envia eventos normalizados em `POST /api/opencode/events` (só id/sessão/pasta/ferramenta/estado, sem prompts, argumentos, resultados ou credenciais), rota 100% local (só aceita `127.0.0.1/::1/localhost`). `OpenCodeSource` com detecção de contas, presença por janela com tempo extra para ferramentas em voo, tratamento de subagentes (entrega quando ocioso, volta a trabalhar), mapeamento de atividade e estados de espera/erro. Inclui nomes/traduções e `PROVIDER_NAME.opencode`; não afeta Claude/Codex, não altera modelo da instalação nem `opencode.json`.
+- **OpenCode: instalador do plugin (`npm run opencode:install`).** Copia o plugin para a pasta de plugins de cada
+  conta do OpenCode (faz backup antes de regravar), com `opencode:uninstall` e `opencode:status`; aceita `--dry-run`,
+  `--conta` e `--port`. Depois de instalar, o plugin vale para as sessões abertas depois.
+- **Mandar mensagens aos agentes do OpenCode.** O agente do OpenCode recebe a mensagem da caixa do escritório (ou do
+  rodapé do terminal) pelo próprio CLI dele: o servidor roda `opencode run --session <id> "<texto>"` (no modo Node; o
+  CLI `opencode-termux`/`opencode` precisa estar no PATH, ou use `HABBLAUD_OPENCODE_BIN`). A mensagem entra na sessão
+  como se você a tivesse digitado, com a mesma fila, prazos, limites e linha de situação das outras ferramentas; em
+  Docker não há entrega. O modelo da sessão nunca é tocado (não passamos `--model`) e nenhuma permissão é aprovada
+  sozinha (não passamos `--auto`): um pedido de permissão continua parando na tela do OpenCode. O log de início diz se
+  o CLI foi encontrado.
+
+### Corrigido
+- **OpenCode: a caixa de mensagem não promete mais o que não entrega.** Num agente do OpenCode, a caixa (e o
+  rodapé do terminal) mostrava a dica do Claude Code — `npm run mod:install (plugin habblaud-mensagens)` — que não
+  instala nada no OpenCode. Agora, com o CLI do OpenCode no PATH, a caixa fica pronta (entrega pelo CLI, veja acima);
+  sem ele, a dica diz o que falta (o CLI no PATH de quem roda o Habblaud ou `HABBLAUD_OPENCODE_BIN`), com as
+  traduções.
+- **OpenCode: título automático, tarefas e números acompanham a sessão.** O escritório só conhecia o título por
+  renome explícito — como o OpenCode gera o título automático depois do primeiro pedido, sem evento de renome, a
+  sessão ficava sem título na gaveta. Agora o plugin entende também o `session.updated` (e o `session.created` no
+  formato com a sessão inteira), avisa quando há uso novo, e mostra a compactação da memória e as retentativas da API
+  como atividade (a mesma ideia do Claude Code). O título, a lista de tarefas (`todo`/`todowrite`) e os totais são
+  relidos do banco na hora do uso e no fim do turno, e os tokens de raciocínio passam a contar na saída.
+- **OpenCode: os comandos de terminal não viram mais gente no escritório.** Cada comando de shell do OpenCode cria
+  uma sessão de terminal (`sh_…`), e o plugin anunciava todas elas como sessão de trabalho: a sala enchia de
+  personagens "Agente principal (OpenCode)" sem título, um por comando. Agora o plugin não as anuncia e a fonte
+  também as ignora (um plugin antigo já instalado não volta a sujar o escritório).
+
 ## [1.0.3] - 2026-10-16
 
 ### Corrigido

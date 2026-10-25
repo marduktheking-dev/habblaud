@@ -47,7 +47,11 @@ export function applyTaskOp(tasks: TaskItem[], op: TaskOp): TaskItem[] {
   }
 }
 
-function todosToTasks(raw: unknown): TaskItem[] {
+/**
+ * Lista de tarefas do agente (`TodoWrite`, `todowrite`...) virada em `TaskItem`. Vale para qualquer ferramenta
+ * que mande a lista em `todos` — o Claude Code e o OpenCode usam a mesma forma.
+ */
+export function todosToTasks(raw: unknown): TaskItem[] {
   if (!Array.isArray(raw)) return [];
   const out: TaskItem[] = [];
   raw.forEach((item, i) => {

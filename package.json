@@ -42,6 +42,9 @@
     "codex:uninstall": "tsx scripts/codex-install.ts uninstall",
     "codex:status": "tsx scripts/codex-install.ts status",
     "codex:bridge": "tsx scripts/codex-bridge.ts",
+    "opencode:install": "tsx scripts/opencode-install.ts install",
+    "opencode:uninstall": "tsx scripts/opencode-install.ts uninstall",
+    "opencode:status": "tsx scripts/opencode-install.ts status",
     "remote:setup": "tsx scripts/remote-setup.ts",
     "remote:mdns": "tsx scripts/remote-mdns.ts",
     "release": "tsx scripts/release.ts"

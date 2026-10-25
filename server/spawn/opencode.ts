@@ -44,6 +44,9 @@ export function createOpenCodeCliRunner(bin: string, timeoutMs = OPENCODE_SPAWN_
       try {
         child = spawn(bin, openCodeArgs(req), {
           cwd: req.folder,
+          // O `opencode` escolhe o projeto pelo `PWD` do ambiente, não pelo cwd do processo: sem isto, a sessão
+          // nasceria na pasta de quem roda o Habblaud (o serviço), não na pasta escolhida.
+          env: { ...process.env, PWD: req.folder },
           stdio: ['pipe', 'ignore', 'ignore'],
           detached: process.platform !== 'win32',
         });

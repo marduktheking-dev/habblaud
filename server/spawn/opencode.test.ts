@@ -19,7 +19,7 @@ describe('novo agente no OpenCode', () => {
   it('com pedido, manda o texto pela entrada padrão e o título pelos argumentos', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'hb-opencode-'));
     const bin = join(dir, 'opencode-falso');
-    writeFileSync(bin, '#!/bin/sh\ncat > prompt.txt\nprintf \'%s\\n\' "$@" > args.txt\n');
+    writeFileSync(bin, '#!/bin/sh\ncat > prompt.txt\nprintf \'%s\\n\' "$@" > args.txt\nprintenv PWD > envpwd.txt\n');
     chmodSync(bin, 0o755);
     const run = createOpenCodeCliRunner(bin, 2_000);
     const r = await run({ folder: dir, prompt: '  faça X  ' });
@@ -28,5 +28,6 @@ describe('novo agente no OpenCode', () => {
     await new Promise((ok) => setTimeout(ok, 150));
     expect(readFileSync(join(dir, 'prompt.txt'), 'utf8')).toBe('  faça X  ');
     expect(readFileSync(join(dir, 'args.txt'), 'utf8').trim().split('\n')).toEqual(['run', '--title', `Habblaud: ${basename(dir)}`]);
+    expect(readFileSync(join(dir, 'envpwd.txt'), 'utf8').trim()).toBe(dir);
   });
 });

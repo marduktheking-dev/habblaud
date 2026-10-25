@@ -5,7 +5,7 @@
 <h1 align="center">Habblaud</h1>
 
 <p align="center">
-  <b>O escritório virtual dos seus agentes do Claude Code (e do Codex).</b><br />
+  <b>O escritório virtual dos seus agentes do Claude Code, do Codex e do OpenCode.</b><br />
   Cada projeto vira uma sala, cada agente vira um personagem em pixel art que mostra, em tempo real, o que está fazendo.
 </p>
 
@@ -25,17 +25,19 @@
 
 ---
 
-Você abre o Claude Code em vários projetos, dispara subagentes, deixa tarefas rodando… e perde a noção de quem está
-fazendo o quê. O **Habblaud** transforma isso num escritório que dá para entender de relance: quem está digitando,
-quem levantou a mão porque **precisa de você**, quem entregou o trabalho e foi embora, quem foi tomar um café
-enquanto espera a próxima instrução — e quanto de cada conta você já gastou na sessão de 5 horas e na semana.
+Você abre o Claude Code, o Codex ou o OpenCode em vários projetos, dispara subagentes, deixa tarefas rodando… e perde
+a noção de quem está fazendo o quê. O **Habblaud** transforma isso num escritório que dá para entender de relance:
+quem está digitando, quem levantou a mão porque **precisa de você**, quem entregou o trabalho e foi embora, quem foi
+tomar um café enquanto espera a próxima instrução — e quanto de cada conta do Claude Code ou do Codex você já gastou
+na sessão de 5 horas e na semana.
 
 E quando dois ou mais agentes estão à toa, o escritório ganha **vida social**: cada um tem personalidade própria, e
 eles veem futebol juntos no lounge, jogam videogame e ping-pong, fofocam na copa, se arrumam no espelho e apostam
 moedinhas no jokenpô. Veja em [Vida social](#vida-social).
 
-Tudo roda na sua máquina, lendo os arquivos que o próprio Claude Code já grava (e só as linhas `alias` do seu shell,
-para dar a letra de cada conta). Nada sai do computador: o Habblaud não lê credenciais nem faz chamadas externas.
+Tudo roda na sua máquina, lendo os arquivos que o próprio Claude Code, o Codex e o OpenCode já gravam (o banco do
+OpenCode é aberto só para leitura) e só as linhas `alias` do seu shell, para dar a letra de cada conta do Claude Code.
+Nada sai do computador: o Habblaud não lê credenciais nem faz chamadas externas.
 
 ## Sumário
 
@@ -127,6 +129,7 @@ ela, e o endereço antigo apaga e é desmontado. Assim o prédio não fica com b
 
 - **macOS** (testado) ou Linux.
 - **[Claude Code](https://code.claude.com)** instalado, com uma ou mais contas (2.1.287 ou mais novo para o mod).
+- **OpenCode 2.x** (opcional), com `opencode-termux` ou `opencode` no PATH; o plugin é instalado com `npm run opencode:install`.
 - **Node.js 22.12+** e **npm** (desenvolvido com o Node 24; o Docker já usa o Node 24).
 - **Docker Desktop** (ou Docker Engine com Compose v2), se for rodar em container.
 
@@ -161,7 +164,7 @@ npm start
 
 Abra **http://localhost:4747**. Para desenvolver, use `npm run dev` (servidor + Vite com recarga automática).
 
-Agora abra o Claude Code em qualquer projeto e veja o seu agente chegar pelo elevador. 🎉
+Agora abra o Claude Code, o Codex ou o OpenCode em qualquer projeto e veja o seu agente chegar pelo elevador. 🎉
 
 ### 3. Instale o mod do Habblaud no Claude Code (recomendado)
 

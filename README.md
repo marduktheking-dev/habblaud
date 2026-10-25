@@ -5,7 +5,7 @@
 <h1 align="center">Habblaud</h1>
 
 <p align="center">
-  <b>The virtual office for your Claude Code (and Codex) agents.</b><br />
+  <b>The virtual office for your Claude Code, Codex and OpenCode agents.</b><br />
   Each project becomes a room, and each agent becomes a pixel-art character that shows, in real time, what it's doing.
 </p>
 
@@ -25,18 +25,19 @@
 
 ---
 
-You open Claude Code in several projects, launch subagents, leave tasks running… and lose track of who's doing
-what. **Habblaud** turns all of that into an office you can take in at a glance: who's typing, who raised a hand
-because they **need you**, who delivered their work and left, who went for a coffee while waiting for the next
-instruction — and how much of each account you've already used in the 5-hour session and in the week.
+You open Claude Code, Codex or OpenCode in several projects, launch subagents, leave tasks running… and lose track of
+who's doing what. **Habblaud** turns all of that into an office you can take in at a glance: who's typing, who raised a
+hand because they **need you**, who delivered their work and left, who went for a coffee while waiting for the next
+instruction — and how much of each Claude Code or Codex account you've already used in the 5-hour session and in the
+week.
 
 And when two or more agents have nothing to do, the office gets a **social life**: each one has its own personality,
 and they watch soccer together in the lounge, play video games and ping-pong, gossip in the kitchen, freshen up at the
 mirror and bet coins on rock-paper-scissors. See [Social life](#social-life).
 
-Everything runs on your machine, reading the files Claude Code itself already writes (plus only the `alias` lines in
-your shell, to give each account its letter). Nothing leaves the computer: Habblaud doesn't read credentials or make
-external calls.
+Everything runs on your machine, reading the files Claude Code, Codex and OpenCode already write (the OpenCode database
+is opened read-only) plus only the `alias` lines in your shell, to give each Claude Code account its letter. Nothing
+leaves the computer: Habblaud doesn't read credentials or make external calls.
 
 ## Contents
 
@@ -129,6 +130,7 @@ shrinks on its own.
 
 - **macOS** (tested) or Linux.
 - **[Claude Code](https://code.claude.com)** installed, with one or more accounts (2.1.287 or newer for the mod).
+- **OpenCode 2.x** (optional), with `opencode-termux` or `opencode` on the PATH; the plugin is installed with `npm run opencode:install`.
 - **Node.js 22.12+** and **npm** (developed with Node 24; Docker already uses Node 24).
 - **Docker Desktop** (or Docker Engine with Compose v2), if you're going to run it in a container.
 
@@ -163,7 +165,7 @@ npm start
 
 Open **http://localhost:4747**. For development, use `npm run dev` (server + Vite with hot reload).
 
-Now open Claude Code in any project and watch your agent arrive by elevator. 🎉
+Now open Claude Code, Codex or OpenCode in any project and watch your agent arrive by elevator. 🎉
 
 ### 3. Install the Habblaud mod in Claude Code (recommended)
 

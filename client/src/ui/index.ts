@@ -272,7 +272,11 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi,
       void sw.visitOwn();
     };
   }
-  help = new HelpDialog();
+  help = new HelpDialog(() => {
+    const s = store.snapshot;
+    if (!s) return [];
+    return [...new Set([...s.accounts.map((a) => a.provider ?? 'claude'), ...s.agents.map((a) => a.provider ?? 'claude')])];
+  });
   const day = new DayLauncher(ctx, (el) => root.append(el));
   topbar.addPanelButton(day.button);
   // Botão direito numa sala (lista lateral ou escritório): renomear.

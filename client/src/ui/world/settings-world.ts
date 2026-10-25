@@ -570,6 +570,7 @@ export class WorldSettingsGroup {
         h('li', {}, h('strong', { text: tr('Sai:') }), ' ', tr('o tema do escritório; um andar por sala aberta, com um código aleatório que muda todo dia; de cada agente, se é principal ou subagente, a ferramenta, o status, a aparência, um nome sorteado e a faixa de tarefas concluídas no dia; os tokens do prédio arredondados em faixas (dá para desligar); se você ligar, o fato de um agente ter compactado o contexto; a versão e o commit do Habblaud, com a marca de cópia modificada; e o idioma da interface, só para os e-mails.')),
         h('li', {}, h('strong', { text: tr('Nunca sai:') }), ' ', tr('caminhos e nomes de projetos, títulos de sessão, comandos, mensagens, código, custo, a sua conta do Claude, o seu e-mail e o nome do computador.')),
       ),
+      para('ui-set__hint', tr('Hoje o World só aceita agentes do Claude Code e do Codex. Sessões do OpenCode ficam no escritório local e não viram andares no prédio.')),
       para('ui-world__key', tr('Com os dados que saem não dá para saber quem você é nem em que trabalha.')),
       para('ui-set__hint', tr('Os agentes trabalham sem você: prédio aceso não quer dizer que você está no computador. Se preferir, use o modo discreto ou feche o prédio a visitas.')),
       extLink(tr('Ver a lista completa'), WORLD_PRIVACY_URL),

@@ -611,6 +611,8 @@ npm run opencode:uninstall  # tira só esse arquivo (os outros plugins ficam)
   instalador): trocar de porta não pede reinstalar o plugin.
 - **Mandar mensagens** ao OpenCode funciona pelo CLI do OpenCode (veja [Mandar mensagens](#mandar-mensagens)); no
   Docker não há entrega.
+- **Novo agente** funciona pelo CLI do OpenCode: cria uma sessão nova (`opencode run --title …`), com o pedido pela
+  entrada padrão. O pedido é obrigatório (não há app para abrir uma tela vazia).
 - `HABBLAUD_OPENCODE=0` desliga o OpenCode no escritório.
 
 ### Codex

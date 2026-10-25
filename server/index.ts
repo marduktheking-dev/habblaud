@@ -47,6 +47,7 @@ import { UpdateChecker } from './updates/checker';
 import { getLocale, tr } from '../shared/i18n';
 import type { WorldLocale } from '../shared/world/protocol';
 import { createCliRunner, createOpener, SpawnService } from './spawn/spawn';
+import { createOpenCodeCliRunner } from './spawn/opencode';
 import { runnableClaudeBin } from './claude-bin';
 import { AttachmentStore } from './spawn/attachments';
 import { recentFolders } from './spawn/folders';
@@ -266,17 +267,25 @@ late.permissions = permissions;
 // fora do Docker o próprio servidor roda o comando (HABBLAUD_CODEX_BIN ou `codex` do PATH); no Docker, o auxiliar do
 // host (npm run codex:bridge).
 const codexBin = config.messages && !config.inDocker ? findCodexBin(process.env) : undefined;
-// Terminal interativo e Novo agente: os dois rodam o Claude Code neste computador, então pedem a mesma liberação,
+// Terminal interativo e Novo agente: os dois rodam um CLI neste computador, então pedem a mesma liberação,
 // HABBLAUD_PTY=1 (aceita os mesmos valores do HABBLAUD_TERMINAL).
 const ptyFlag = process.env.HABBLAUD_PTY?.trim();
 const ptyOptIn = isTruthy(ptyFlag);
-// Novo agente pelo escritório (sessão do Claude Code em segundo plano, ou a tela do app do Claude preenchida): a
-// liberação acima mais a trava das mensagens. No Docker, quem roda é o auxiliar do host (npm run codex:bridge).
+// Novo agente pelo escritório (sessão do Claude Code em segundo plano, a tela do app do Claude preenchida ou uma
+// sessão nova do OpenCode): a liberação acima mais a trava das mensagens. No Docker, quem roda é o auxiliar do host
+// (npm run codex:bridge); o OpenCode só abre pelo CLI neste computador.
 const spawnOn = config.messages && ptyOptIn;
 const attachments = spawnOn ? new AttachmentStore() : undefined;
 const spawnBin = config.inDocker ? undefined : runnableClaudeBin(process.env);
+// Sem o Claude Code (o caso do OpenCode), o Novo agente usa o CLI do OpenCode: uma sessão nova dele, sem deep link.
+const opencodeSpawnBin = config.messages && !config.inDocker ? findOpenCodeBin(process.env) : undefined;
+const spawnCli = spawnBin ? createCliRunner(spawnBin) : opencodeSpawnBin ? createOpenCodeCliRunner(opencodeSpawnBin) : undefined;
 const spawn = spawnOn
-  ? new SpawnService(config.inDocker ? { attachments } : { opener: createOpener(), cli: spawnBin ? createCliRunner(spawnBin) : undefined, attachments })
+  ? new SpawnService(
+      config.inDocker
+        ? { attachments }
+        : { direct: !!spawnCli, opener: spawnBin ? createOpener() : undefined, cli: spawnCli, attachments },
+    )
   : undefined;
 // Ditado: no Docker quem transcreve é o auxiliar do host; no Node, o servidor, se achar o Whisper local.
 const whisper = config.messages && !config.inDocker ? findWhisper() : undefined;
@@ -531,7 +540,9 @@ server.listen(config.port, config.host, () => {
         ? tr('   Novo agente: ligado, pelo auxiliar do host (deixe npm run codex:bridge rodando no computador).')
         : spawnBin
           ? tr('   Novo agente: ligado ({0} --bg; pasta ainda não confiável abre no app do Claude).', [spawnBin])
-          : tr('   Novo agente: ligado, só pelo app do Claude (claude não encontrado no PATH).'),
+          : opencodeSpawnBin
+            ? tr('   Novo agente: ligado pelo CLI do OpenCode ({0}; o pedido é obrigatório).', [opencodeSpawnBin])
+            : tr('   Novo agente: ligado, só pelo app do Claude (claude não encontrado no PATH).'),
   );
   log.info(timeline ? tr('   Linha do tempo (timelapse): gravando em {0}.', [timelineDir]) : tr('   Linha do tempo (timelapse): gravação desligada (HABBLAUD_TIMELINE).'));
   log.info(tr('   Responder pelo escritório: {0}.', [config.terminal ? tr('ligado (precisa do mod: npm run mod:install; ou do hook antigo: npm run hooks:install)') : tr('desligado (mesma trava do terminal)')]));

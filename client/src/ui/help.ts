@@ -88,10 +88,12 @@ const OPENCODE_HELP: string[] = [
   tr('Trabalhando calado por 2 min vira ocioso; ferramenta em andamento (comando, leitura, edição) segura o status. O OpenCode não tem o estado “esperando shell”.'),
   tr('O escritório mostra que o OpenCode pede permissão, mas não aprova por aqui: o pedido e a decisão ficam no terminal do OpenCode. O plugin não devolve a resposta.'),
   tr('Mensagens: o Habblaud entrega pelo CLI (`opencode run --session`), não pelo mod. O texto entra como o próximo prompt; se o CLI não estiver no PATH de quem roda o Habblaud, os detalhes avisam.'),
+  tr('Novo agente: com o CLI no PATH, o botão cria uma sessão nova (`opencode run --title …`), com o pedido pela entrada padrão. O pedido é obrigatório: o OpenCode não tem um app para abrir uma tela vazia.'),
   tr('Abrir terminal mostra a conversa da sessão ao vivo (leitura). Assumir uma sessão aberta no terminal do OpenCode não é suportado; para interagir, use o terminal do próprio OpenCode.'),
   tr('Não há cota de plano (sessão de 5 horas e semanal) para mostrar. Os totais de ferramentas, tokens e custo vêm do banco local e aparecem na gaveta do agente.'),
   tr('GitHub: `gh`, `git push` e afins não animam a sala do OpenCode; o que chega é o que o plugin mandar (ferramentas, mensagens, subagentes).'),
   tr('Subagentes aparecem como colegas na mesma sala, ligados ao agente principal pelo `parentID`.'),
+  tr('World: o protocolo ainda só aceita Claude Code e Codex; um prédio só com OpenCode fica sem andares lá. O escritório daqui continua mostrando as sessões.'),
 ];
 
 /** O fim da espera (o servidor marca com uma atividade ✅ ou ❌). */

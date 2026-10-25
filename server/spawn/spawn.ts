@@ -122,14 +122,15 @@ export function cliNote(error: string): string {
     : error;
 }
 
-/** Roda em segundo plano; se não der, abre a tela do app preenchida (e diz por quê). */
-export async function launch(req: SpawnRequest, open: Opener, cli?: CliRunner): Promise<LaunchResult> {
+/** Roda em segundo plano; se não der, abre a tela do app preenchida (e diz por quê). Sem app (OpenCode), devolve o erro. */
+export async function launch(req: SpawnRequest, open?: Opener, cli?: CliRunner): Promise<LaunchResult> {
   let note: string | undefined;
   if (cli) {
     const r = await cli(req).catch((err: unknown) => ({ ok: false as const, error: String((err as Error)?.message ?? err) }));
     if (r.ok) return { ok: true, how: 'cli' };
     note = cliNote(r.error);
   }
+  if (!open) return { ok: false, error: note ?? tr('não há como abrir um agente novo neste computador') };
   const o = await open(spawnUrl(req)).catch(() => ({ ok: false as const, error: tr('falhou ao abrir o app') }));
   if (!o.ok) return note ? { ok: false, error: tr('{0}; e o app não abriu ({1})', [note, o.error]).slice(0, ERROR_MAX) } : o;
   return note ? { ok: true, how: 'app', note } : { ok: true, how: 'app' };
@@ -173,6 +174,8 @@ export interface PolledSpawn extends SpawnRequest {
 export interface SpawnServiceOptions {
   /** Modo Node: abre aqui mesmo. Ausente (Docker): fica na fila para o auxiliar do host. */
   opener?: Opener;
+  /** Abre aqui mesmo mesmo sem app (OpenCode, que não tem deep link): usa só o `cli`. */
+  direct?: boolean;
   /** Modo Node: roda em segundo plano antes de cair no app (ausente = só o app). */
   cli?: CliRunner;
   /** Confere a pasta antes de abrir no modo direto (padrão: statSync). */
@@ -198,11 +201,11 @@ export class SpawnService {
 
   /** Dá para abrir agora: modo direto, ou o auxiliar do host passou há pouco. */
   available(): boolean {
-    return !!this.opts.opener || this.now() - this.hostSeenAt <= HOST_PRESENCE_MS;
+    return this.opts.direct === true || !!this.opts.opener || this.now() - this.hostSeenAt <= HOST_PRESENCE_MS;
   }
 
   mode(): 'direct' | 'host' {
-    return this.opts.opener ? 'direct' : 'host';
+    return this.opts.direct === true || this.opts.opener ? 'direct' : 'host';
   }
 
   submit(raw: unknown): SpawnSubmit {
@@ -226,7 +229,7 @@ export class SpawnService {
     const info: SpawnInfo = { id: this.opts.newId?.() ?? randomUUID(), folder: req.folder, status: 'queued' };
     const entry: Entry = { info, req, files, at: this.now() };
     this.entries.set(info.id, entry);
-    if (this.opts.opener) void this.openDirect(entry, this.opts.opener);
+    if (this.opts.direct === true || this.opts.opener) void this.openDirect(entry);
     return { spawn: { ...info } };
   }
 
@@ -268,7 +271,7 @@ export class SpawnService {
     }
   }
 
-  private async openDirect(e: Entry, opener: Opener): Promise<void> {
+  private async openDirect(e: Entry): Promise<void> {
     e.info.status = 'sent';
     const problem = (this.opts.folderProblem ?? folderProblem)(e.req.folder);
     if (problem) return this.resolve(e, { ok: false, error: problem });
@@ -281,7 +284,7 @@ export class SpawnService {
       this.dropFiles(e);
     }
     const req = { folder: e.req.folder, prompt: promptWithAttachments(e.req.prompt, paths) };
-    this.resolve(e, await launch(req, opener, this.opts.cli));
+    this.resolve(e, await launch(req, this.opts.opener, this.opts.cli));
   }
 
   /** Os anexos do pedido saem da memória (e do teto do AttachmentStore). */

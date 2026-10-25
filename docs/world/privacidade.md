@@ -81,6 +81,11 @@ O pacote do prédio tem estes campos e mais nenhum (o formato exato está em
 | `compacted` | Só se você ligou "compactações": `true` quando o agente compactou o contexto desde o pacote anterior (o `/clear` não conta) | A lixeira da sala enche |
 | `tokens` | Só se "mostrar tokens" estiver ligado (vem ligado; dá para desligar): `day` (hoje) e `week` (hoje e os 6 dias anteriores), o total do prédio (entrada + saída de todos os agentes, do "Meu dia", sem o modo demonstração), arredondado a 2 algarismos (ex.: 1.200.000). Os outros só veem a **faixa** (até 100 mil, 1 milhão, 10 milhões, 100 milhões, acima) | O medidor da fachada |
 
+**OpenCode hoje:** o protocolo do World só conhece `claude` e `codex`. Sessões do OpenCode **não** sobem para o
+World, então um prédio só com agentes do OpenCode fica sem andares lá. É uma limitação do protocolo do World, não um
+defeito local: o escritório daqui mostra as sessões normalmente, e o dia em que o World aceitar `opencode` elas passam a
+subir sem mudar o que é enviado. Mapear OpenCode para `claude` ou `codex` seria mentir sobre a ferramenta e não é feito.
+
 Mais nada. O pacote de um escritório com 3 projetos e 5 agentes tem uns 2 KB. Os limites são 64 andares, 64 agentes
 por andar, 256 no total e 64 KB (na prática, uns 170 agentes); acima disso, o Habblaud corta os últimos e avisa no log.
 O servidor confere cada campo (nomes dentro da lista de nomes, cores dentro das paletas, ids no formato) e recusa o

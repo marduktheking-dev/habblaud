@@ -41,7 +41,7 @@ import {
 import { access } from '../net/access';
 import { PermissionCard } from './permission';
 import { canRenameRoom } from './roomrename';
-import { accountChipLabel, accountProvider, CODEX_LIVE_HINT, codexApprovalLabel, providerOf } from './provider';
+import { accountChipLabel, accountProvider, CODEX_LIVE_HINT, codexApprovalLabel, isOpenCode, providerOf } from './provider';
 import { ptyControllable } from './ptyapi';
 import { createAgentRow, updateAgentRow } from './rows';
 import { SocialSection } from './social';
@@ -573,8 +573,13 @@ class AgentView {
     setHidden(this.alert, !waiting || this.perm.visible);
     if (waiting) {
       const accName = account?.name ?? a.account;
-      // Codex: "Vá ao Codex (Conta X)"; sem repetir quando a conta já se chama "Codex".
-      const where = codex ? tr('ao Codex{0}', [/codex/i.test(accName) ? '' : ` (${accName})`]) : tr('ao terminal da {0}', [accName]);
+      // Codex: "Vá ao Codex (Conta X)"; sem repetir quando a conta já se chama "Codex". OpenCode: o terminal dele,
+      // que é onde o pedido de permissão realmente aparece.
+      const where = codex
+        ? tr('ao Codex{0}', [/codex/i.test(accName) ? '' : ` (${accName})`])
+        : isOpenCode(a)
+          ? tr('ao terminal do OpenCode')
+          : tr('ao terminal da {0}', [accName]);
       setText(this.alertText, tr('Vá {0} em {1} para responder{2}', [where, room?.name ?? tr('seu projeto'), a.waitingFor ? `: ${a.waitingFor}` : '.']));
     }
     // Perguntas do AskUserQuestion (só leitura): o Codex não pergunta pelo escritório.
@@ -720,7 +725,7 @@ class AgentView {
             ? tr('O agente já saiu do escritório.')
             : kind === 'ao vivo'
               ? tr('Ver a conversa desta sessão como no {0}, ao vivo{1} (T)', [
-                  provider === 'codex' ? 'Codex' : tr('terminal do Claude Code'),
+                  provider === 'codex' ? 'Codex' : isOpenCode(this.last) ? 'OpenCode' : tr('terminal do Claude Code'),
                   this.pty.enabled && ptyControllable(this.last) ? tr('; "Assumir daqui" continua nela aqui') : '',
                 ])
               : kind === 'interativo'

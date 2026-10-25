@@ -50,7 +50,9 @@ export function composerMode(agent: AgentInfo | undefined, env: ComposerEnv): Co
 export function composerTip(provider: Provider = 'claude'): string {
   return provider === 'codex'
     ? tr('Entra na fila da sessão e vira o próximo prompt quando o Codex terminar o que está fazendo. Enter manda; Shift+Enter quebra a linha.')
-    : tr('Entra na sessão como se você tivesse digitado. Enter manda; Shift+Enter quebra a linha.');
+    : provider === 'opencode'
+      ? tr('Entra como o próximo prompt do OpenCode; se ele estiver ocupado, entra quando o turno terminar. Enter manda; Shift+Enter quebra a linha.')
+      : tr('Entra na sessão como se você tivesse digitado. Enter manda; Shift+Enter quebra a linha.');
 }
 
 /** O que sai da caixa: o texto como foi digitado, sem os espaços e linhas em branco do fim. */
@@ -128,9 +130,10 @@ export function pollDelay(elapsed: number): number {
 export const LOST_ERROR = tr('o Habblaud não conhece mais esta mensagem (ele reiniciou?)');
 export const TIMEOUT_ERROR = tr('sem notícia da entrega: confira no terminal do Claude Code');
 export const CODEX_TIMEOUT_ERROR = tr('sem notícia da entrega: confira no Codex');
+export const OPENCODE_TIMEOUT_ERROR = tr('sem notícia da entrega: confira no terminal do OpenCode');
 export const OFFLINE_ERROR = tr('não foi possível falar com o Habblaud');
 
 /** Prazo da consulta acabou sem notícia: onde conferir. */
 export function timeoutError(provider: Provider = 'claude'): string {
-  return provider === 'codex' ? CODEX_TIMEOUT_ERROR : TIMEOUT_ERROR;
+  return provider === 'codex' ? CODEX_TIMEOUT_ERROR : provider === 'opencode' ? OPENCODE_TIMEOUT_ERROR : TIMEOUT_ERROR;
 }

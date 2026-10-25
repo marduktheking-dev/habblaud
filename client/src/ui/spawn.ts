@@ -1,8 +1,9 @@
-// Novo agente (botão na barra do topo): começa uma sessão do Claude Code em segundo plano no Mac, na pasta escolhida e
-// com o pedido (POST /api/spawn; server/spawn/spawn.ts). As pastas são os projetos recentes do computador
+// Novo agente (botão na barra do topo): começa uma sessão nova no computador, na pasta escolhida e com o pedido
+// (POST /api/spawn; server/spawn/spawn.ts). As pastas são os projetos recentes do computador
 // (GET /api/spawn/folders: histórico de sessões + salas), para escolher com um toque; "Outra pasta" aceita um caminho
 // digitado. O pedido pode levar anexos (POST /api/spawn/attachments, um por arquivo, antes do pedido) e ser ditado
-// (ui/dictation.ts, Whisper local no Mac). Pasta que o Claude Code não conhece cai no app (Enter lá).
+// (ui/dictation.ts, Whisper local no Mac). No Claude Code, pasta que ele não conhece cai no app (Enter lá); no OpenCode,
+// o pedido é obrigatório e a sessão começa pelo CLI.
 import { tr } from '../../../shared/i18n';
 import { isDemoId } from '../../../shared/timeline';
 import type { OfficeSnapshot } from '../../../shared/types';
@@ -143,7 +144,7 @@ export class SpawnPanel {
     });
     this.prompt = h('textarea', {
       class: 'ui-rename__input ui-spawn__prompt',
-      attrs: { id: 'ui-spawn-prompt', rows: 5, maxlength: SPAWN_PROMPT_MAX, placeholder: tr('O que o agente deve fazer (opcional)') },
+      attrs: { id: 'ui-spawn-prompt', rows: 5, maxlength: SPAWN_PROMPT_MAX, placeholder: tr('O que o agente deve fazer (opcional no Claude Code; obrigatório no OpenCode)') },
     });
     this.fileInput = h('input', { type: 'file', hidden: true, attrs: { multiple: true, 'aria-hidden': 'true', tabindex: '-1' } });
     this.fileInput.addEventListener('change', () => {
@@ -196,7 +197,7 @@ export class SpawnPanel {
         this.prompt,
         h('div', { class: 'ui-spawn__tools' }, this.dictate.el, attachBtn, this.fileInput),
         this.fileList,
-        h('p', { class: 'ui-rename__hint', text: tr('Começa na hora uma sessão do Claude Code em segundo plano no computador, na pasta escolhida; as permissões chegam aqui. Pasta que o Claude Code ainda não conhece abre no app do Claude e espera o Enter lá. Anexos vão para ~/.habblaud/attachments e o pedido leva os caminhos.') }),
+        h('p', { class: 'ui-rename__hint', text: tr('Começa uma sessão nova no computador, na pasta escolhida. No Claude Code, as permissões chegam aqui e uma pasta ainda não confiável abre no app; no OpenCode, o pedido é obrigatório e a sessão começa pelo CLI. Anexos vão para ~/.habblaud/attachments e o pedido leva os caminhos.') }),
         this.submitBtn,
         this.status,
       ),

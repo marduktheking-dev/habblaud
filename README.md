@@ -613,6 +613,8 @@ npm run opencode:uninstall  # removes just that file (the other plugins stay)
   installer): changing the port doesn't ask you to reinstall the plugin.
 - **Sending messages** to OpenCode works through OpenCode's own CLI (see [Sending messages](#sending-messages)); in
   Docker there is no delivery.
+- **New agent** works through the OpenCode CLI: it creates a new session (`opencode run --title …`), with the prompt on
+  standard input. A prompt is required (there is no app to open an empty screen).
 - `HABBLAUD_OPENCODE=0` turns OpenCode off in the office.
 
 ### Codex

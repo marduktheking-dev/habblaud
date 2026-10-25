@@ -196,6 +196,21 @@ describe('novo agente em segundo plano (claude --bg)', () => {
     });
   });
 
+  it('launch: sem app (OpenCode), o CLI sozinho abre ou devolve o erro', async () => {
+    expect(await launch({ folder: '/p', prompt: 'oi' }, undefined, async () => ({ ok: true, id: 'a' }))).toEqual({ ok: true, how: 'cli' });
+    expect(await launch({ folder: '/p', prompt: 'oi' }, undefined, async () => ({ ok: false, error: 'sem serviço' }))).toEqual({ ok: false, error: 'sem serviço' });
+    expect(await launch({ folder: '/p', prompt: 'oi' }, undefined)).toEqual({ ok: false, error: 'não há como abrir um agente novo neste computador' });
+  });
+
+  it('SpawnService: modo direto sem app (OpenCode) abre pelo CLI e fica disponível', async () => {
+    const s = new SpawnService({ direct: true, cli: async () => ({ ok: true, id: 'o1' }), folderProblem: () => undefined, newId: () => 'o1' });
+    expect(s.available()).toBe(true);
+    expect(s.mode()).toBe('direct');
+    s.submit({ folder: '/p', prompt: 'oi' });
+    await new Promise((ok) => setTimeout(ok, 0));
+    expect(s.get('o1')).toEqual({ id: 'o1', folder: '/p', status: 'opened', how: 'cli' });
+  });
+
   it('SpawnService: modo direto com o claude e confirmação do auxiliar com how/note', async () => {
     const s = new SpawnService({ opener: async () => ({ ok: true }), cli: async () => ({ ok: true, id: 'x' }), folderProblem: () => undefined, newId: () => 'c1' });
     s.submit({ folder: '/p', prompt: 'oi' });

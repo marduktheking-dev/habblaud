@@ -11,6 +11,7 @@ import {
   isSettled,
   messageText,
   OPENCODE_CLI_HINT,
+  OPENCODE_TIMEOUT_ERROR,
   PLUGIN_HINT,
   pollDelay,
   sendStatusText,
@@ -131,8 +132,10 @@ describe('caixa de mensagem (peças puras)', () => {
     // O Claude Code continua como antes.
     expect(sendStatusText({ phase: 'delivered', at: 0 }, 1_000, 'claude')).toBe(sendStatusText({ phase: 'delivered', at: 0 }, 1_000));
     expect(composerTip('codex')).toMatch(/^Entra na fila da sessão e vira o próximo prompt quando o Codex terminar/);
+    expect(composerTip('opencode')).toMatch(/^Entra como o próximo prompt do OpenCode/);
     expect(composerTip()).toBe('Entra na sessão como se você tivesse digitado. Enter manda; Shift+Enter quebra a linha.');
     expect(timeoutError('codex')).toBe(CODEX_TIMEOUT_ERROR);
+    expect(timeoutError('opencode')).toBe(OPENCODE_TIMEOUT_ERROR);
     expect(timeoutError()).toBe(TIMEOUT_ERROR);
   });
 

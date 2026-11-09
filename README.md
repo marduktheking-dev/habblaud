@@ -795,6 +795,14 @@ account stays only here, in `~/.habblaud/world.json` (permission 600; in Docker,
 | `HABBLAUD_WORLD_URL` | `https://server.habblaud.com` | World server address, `https://` or `wss://` only (no path). |
 | `HABBLAUD_WORLD` | on | `0` turns off everything about the World (routes and interface) and nothing leaves your computer. |
 | `HABBLAUD_WORLD_DEV` | off | `1` accepts a local world server without TLS: `http://127.0.0.1:<port>` (`npm run dev` already does) or, from inside Docker, `http://host.docker.internal:<port>`. |
+| `HABBLAUD_WORLD_OPENCODE` | on | `0` closes the OpenCode barrier: its agents stay out of the building even after the public contract accepts them. |
+| `HABBLAUD_WORLD_OPENCODE_ADAPTER` | off | `codex` or `claude` remaps **only the provider label on the wire** while the public contract does not accept `opencode`; counts, status, tasks and the local truth stay untouched. Opt-in, reversible. |
+
+**OpenCode agents.** The building packet may only carry a `provider` that the published World contract validates. A
+probe reads `shared/world/schema.json` from the public repository every 6 h and the gate keeps OpenCode agents out
+until the remote enum lists `opencode` — with the reason shown on the Your building card. The gate, the probe, the
+wire adapter and the verification steps are documented in [docs/world/opencode.md](docs/world/opencode.md) (in
+Portuguese).
 
 **Privacy.** Nothing about your work leaves your computer. From the building, only this goes out: the theme, one floor
 per open room (with a random code that changes every day) and, for each agent, main or subagent, the tool, the status,

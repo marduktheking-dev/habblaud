@@ -673,6 +673,23 @@ export function bytesText(n: number): string {
 }
 
 /** "1 andar", "3 andares". */
+/** Uma linha no cartão "Seu prédio": por que o OpenCode está ou não no prédio (o gate do servidor local). */
+export function opencodeGateText(o: NonNullable<WorldBuildingStatus['opencode']>): string {
+  switch (o.reason) {
+    case 'open':
+      return tr('OpenCode no prédio: o contrato do mundo já aceita os três provedores.');
+    case 'flag_off':
+      return tr('OpenCode fora do prédio: o envio está desligado (HABBLAUD_WORLD_OPENCODE=0). As sessões continuam aqui no escritório.');
+    case 'unknown_remote':
+      return tr('OpenCode fora do prédio: ainda sem leitura do contrato do mundo. As sessões continuam aqui no escritório.');
+    case 'ack_cut':
+      return tr('OpenCode fora do prédio: o mundo recusou a última remessa; volta a tentar sozinho depois.');
+    case 'remote_denied':
+    default:
+      return tr('OpenCode fora do prédio: o contrato do mundo ainda só aceita Claude Code e Codex. As sessões continuam aqui no escritório.');
+  }
+}
+
 export function floorsText(n: number): string {
   return n === 1 ? tr('1 andar') : tr('{0} andares', [formatInt(n)]);
 }
@@ -740,6 +757,8 @@ function buildingViewBase(b: WorldBuildingStatus | undefined, hasPlayer: boolean
           agentsText(agents),
           b?.lastUplinkAt ? tr('Última remessa: {0}', [relativeTime(b.lastUplinkAt, now)]) : tr('Nenhuma remessa ainda'),
           ...(b?.visitors ? [`👀 ${visitorsText(b.visitors)}`] : []),
+          // Por que tem (ou não tem) andar do OpenCode: um "0" mudo não explica nada.
+          ...(b?.opencode ? [opencodeGateText(b.opencode)] : []),
         ];
   const live = state === 'connected' || state === 'reconnecting' || state === 'paused';
   const rejected = live && b?.lastAck?.ok === false ? uplinkRejectText(b.lastAck.error) : null;

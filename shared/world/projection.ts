@@ -34,7 +34,8 @@ import { NAME_POOL, pickName } from '../names';
 import { isDemoId } from '../timeline';
 import type { AgentInfo } from '../types';
 import { flattenAppearance } from './appearance-flat';
-import { UPLINK_LIMITS, type WorldAgent, type WorldAgentStatus, type WorldFloor, type WorldTheme, type WorldUplink } from './protocol';
+import { UPLINK_LIMITS, type WorldAgent, type WorldAgentStatus, type WorldFloor, type WorldProvider, type WorldTheme, type WorldUplink } from './protocol';
+import { WORLD_PUBLISHED_PROVIDERS } from './opencode-gate';
 
 /** Ids aleatórios do mundo, por sala e por agente do escritório (server/world/ids.ts). Nunca derivados de nada. */
 export interface WorldIdSource {
@@ -62,6 +63,19 @@ export interface ProjectionInput {
   compacted?: ReadonlySet<string>;
   /** Nomes da remessa anterior por id do mundo: o agente guarda o nome enquanto o id do mundo não troca. */
   previousNames?: ReadonlyMap<string, string>;
+  /**
+   * Providers que o contrato remoto aceita HOJE (o gate do OpenCode, shared/world/opencode-gate.ts). Ausente = só o
+   * publicado: um agente de outra ferramenta fica de fora e o pacote continua dentro do enum do servidor.
+   */
+  worldProviders?: readonly WorldProvider[];
+  /**
+   * Adaptador de fio (opt-in, explícito): quando `opencode` não está em `worldProviders` mas o alias está, agentes
+   * OpenCode são remapeados para `opencodeWireProvider` no pacote enviado (compatibilidade com servidor que ainda não
+   * publica/aceita `opencode`). Mantém contagem/status/tarefas reais; altera apenas o rótulo `provider` no wire.
+   * Rota inversa: a fonte da verdade permanece local (AgentInfo.provider); use `unadaptWorldProvider` para mapear de volta.
+   * Desligado por padrão.
+   */
+  opencodeWireProvider?: WorldProvider;
 }
 
 export interface ProjectionResult {
@@ -117,6 +131,8 @@ function isPoolNameOf(name: string, look: 'f' | 'm'): boolean {
 interface Candidate {
   a: AgentInfo;
   wid: string;
+  /** Provider efetivo no fio (adaptador opt-in; ausente = usa a.provider). */
+  wireProvider?: WorldProvider;
 }
 
 interface FloorCandidate {
@@ -134,26 +150,37 @@ function completedTasks(a: AgentInfo): number {
 
 /** Monta o pacote e diz o que ficou de fora pelos limites. */
 export function projectWithReport(input: ProjectionInput, ids: WorldIdSource, now: number): ProjectionResult {
+  const worldProviders: readonly WorldProvider[] = input.worldProviders ?? WORLD_PUBLISHED_PROVIDERS;
   const roomIds = new Set<string>();
   for (const r of input.rooms) if (!isDemoId(r.id)) roomIds.add(r.id);
-  const byRoom = new Map<string, AgentInfo[]>();
+  const byRoom = new Map<string, Array<{ a: AgentInfo; wireProvider?: WorldProvider }>>();
+  const wireAlias = input.opencodeWireProvider;
+  const canAdaptOpenCode =
+    !!wireAlias && !worldProviders.includes('opencode') && worldProviders.includes(wireAlias);
+  let adaptedCount = 0;
   for (const a of input.agents) {
     if (isDemoId(a.id) || isDemoId(a.roomId) || !roomIds.has(a.roomId)) continue;
     if ((a.kind !== 'main' && a.kind !== 'sub') || !isWorldStatus(a.status)) continue;
-    // O protocolo do mundo (WorldAgent.provider) só tem claude|codex: um agente de outra ferramenta (o OpenCode)
-    // fica de fora em vez de virar 'claude' (mandar 'opencode' seria recusado pelo servidor; dizer que é Claude
-    // seria falso). O escritório local continua com ele normalmente.
-    if (a.provider && a.provider !== 'claude' && a.provider !== 'codex') continue;
+    let wireProvider: WorldProvider | undefined;
+    if (a.provider && !worldProviders.includes(a.provider)) {
+      // Adaptador opt-in: remapeia opencode para um provider aceito no fio (compatibilidade). Sem adaptador, fica fora
+      // (fail-safe) para não derrubar o pacote inteiro com ack "schema" num servidor que não aceita o valor.
+      if (canAdaptOpenCode && a.provider === 'opencode') {
+        wireProvider = wireAlias;
+        adaptedCount++;
+      } else continue;
+    }
     const list = byRoom.get(a.roomId);
-    if (list) list.push(a);
-    else byRoom.set(a.roomId, [a]);
+    const item = { a, wireProvider };
+    if (list) list.push(item);
+    else byRoom.set(a.roomId, [item]);
   }
 
   // Andares e agentes ordenados pelo id do mundo (aleatório): principais antes dos subagentes, para um corte pelos
   // limites levar os subagentes primeiro.
   const floors: FloorCandidate[] = [];
   for (const [roomId, list] of byRoom) {
-    const cands = list.map((a) => ({ a, wid: ids.agentId(a.id, now) }));
+    const cands: Candidate[] = list.map(({ a, wireProvider }) => ({ a, wid: ids.agentId(a.id, now), wireProvider }));
     const mains = cands.filter((c) => c.a.kind === 'main').sort(byWid);
     const subs = cands.filter((c) => c.a.kind === 'sub').sort(byWid);
     floors.push({ fid: ids.floorId(roomId, now), agents: [...mains, ...subs] });
@@ -206,6 +233,7 @@ export function projectWithReport(input: ProjectionInput, ids: WorldIdSource, no
   }
 
   const result: ProjectionResult = { uplink, bytes };
+  if (adaptedCount > 0) result.adapted = adaptedCount;
   const keptAgents = kept.reduce((n, f) => n + f.agents.length, 0);
   if (kept.length < totalFloors || keptAgents < totalAgents) {
     result.truncated = { floors: totalFloors - kept.length, agents: totalAgents - keptAgents };
@@ -216,6 +244,16 @@ export function projectWithReport(input: ProjectionInput, ids: WorldIdSource, no
 /** O pacote do prédio (veja projectWithReport). */
 export function project(input: ProjectionInput, ids: WorldIdSource, now: number): WorldUplink {
   return projectWithReport(input, ids, now).uplink;
+}
+
+/** Rota inversa do adaptador de fio: mapeia o provider visto no wire de volta para o provider original quando aplicável. */
+export function unadaptWorldProvider(
+  wireProvider: WorldProvider,
+  opts?: { opencodeWireProvider?: WorldProvider; original?: WorldProvider },
+): WorldProvider {
+  const alias = opts?.opencodeWireProvider;
+  if (alias && wireProvider === alias) return opts?.original ?? 'opencode';
+  return wireProvider;
 }
 
 /**
@@ -251,7 +289,10 @@ function toWorldAgent(c: Candidate, widOf: ReadonlyMap<string, string>, name: st
     id: c.wid,
     kind: a.kind,
     ...(parent ? { parentId: parent } : {}),
-    provider: a.provider === 'codex' ? 'codex' : 'claude',
+    // Sem coerção por padrão: o gate/filtro decide. Com `opencodeWireProvider` (opt-in), opencode pode ser
+    // remapeado no fio para compatibilidade com servidor que ainda não aceita `opencode`; a fonte da verdade local
+    // permanece em AgentInfo.provider. Rota inversa: `unadaptWorldProvider`.
+    provider: c.wireProvider ?? a.provider ?? 'claude',
     status: a.status as WorldAgentStatus,
     look: a.look === 'f' ? 'f' : 'm',
     name,

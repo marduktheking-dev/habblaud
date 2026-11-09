@@ -49,6 +49,15 @@ import { tr } from '../../shared/i18n';
 import { isDemoId } from '../../shared/timeline';
 import type { AgentInfo } from '../../shared/types';
 import type { WorldBuildingMeta, WorldBuildingStatus, WorldBuildingStop, WorldLastUplink, WorldUplinkAck } from '../../shared/world/api';
+import {
+  cutFromAck,
+  openCodeGate,
+  openCodeGateView,
+  WORLD_PUBLISHED_PROVIDERS,
+  type OpenCodeGateInput,
+  type OpenCodeGateResult,
+  type OpenCodeGateState,
+} from '../../shared/world/opencode-gate';
 import { projectWithReport } from '../../shared/world/projection';
 import {
   GOODBYE_REASONS,
@@ -62,6 +71,7 @@ import {
   type UplinkAckError,
   type UplinkMessage,
   type WorldLocale,
+  type WorldProvider,
   type WorldUplink,
 } from '../../shared/world/protocol';
 import { log } from '../log';
@@ -149,6 +159,13 @@ export interface BuildingUplinkOptions {
   onLeft?: () => void;
   /** O resumo do prédio mudou (meta.world.building): o snapshot é republicado. */
   onChange?: () => void;
+  /**
+   * Gate do OpenCode (shared/world/opencode-gate.ts), com a flag e a leitura do contrato remoto. Ausente = sem gate:
+   * o pacote sai só com claude|codex (comportamento de sempre) e `status().opencode` fica fora.
+   */
+  opencode?: () => OpenCodeGateInput;
+  /** Adaptador opt-in: remapeia opencode para este provider no fio quando o gate/contrato não aceita `opencode`. */
+  opencodeWireProvider?: () => WorldProvider | undefined;
   socket?: SocketFactory;
   now?: () => number;
   /** Os timers (os do Node por padrão); os testes passam os de um relógio manual, junto com `now`. */
@@ -364,6 +381,11 @@ export class BuildingUplink {
     if (this.last?.ack) st.lastAck = this.last.ack.ok ? { ok: true } : { ok: false, error: this.last.ack.error ?? 'internal' };
     if (this.stop_) st.stopped = this.stop_.reason;
     if (this.unverified) st.unverified = true;
+    // O gate só aparece quando existe (quem monta o uplink o liga): fora dele, o status é o de sempre.
+    if (this.o.opencode) {
+      const state = this.gateState();
+      st.opencode = openCodeGateView(this.gate(), state);
+    }
     return st;
   }
 
@@ -704,6 +726,34 @@ export class BuildingUplink {
     return this.o.agents().filter((a) => !isDemoId(a.id));
   }
 
+  /**
+   * Estado do gate agora: a flag e a leitura do contrato remoto vêm de fora, e o corte vem do ack do ÚLTIMO pacote
+   * (um aceito depois limpa o corte sozinho). Sem gate montado, devolve o estado fechado por leitura ausente.
+   */
+  private gateState(): OpenCodeGateState {
+    const base: OpenCodeGateInput = this.o.opencode?.() ?? { flag: false };
+    const cut = cutFromAck(this.last?.ack);
+    return { ...base, now: this.now(), ...(cut ? { cut } : {}) };
+  }
+
+  /** Providers que a projeção pode emitir AGORA (só o contrato remoto abre: nunca mais do que ele aceita). */
+  private gate(): OpenCodeGateResult {
+    if (!this.o.opencode) return { allowed: false, reason: 'unknown_remote', providers: WORLD_PUBLISHED_PROVIDERS };
+    const r = openCodeGate(this.gateState());
+    if (r.allowed) {
+      log.clearOnce('world-opencode-gate');
+    } else if (r.reason !== 'flag_off') {
+      log.warnOnce(
+        'world-opencode-gate',
+        tr('Habblaud World: OpenCode não entra no prédio ({0}); providers={1}. Contrato remoto sem opencode ou sem leituras suficientes — publique schema.json e atualize o servidor do world.', [
+          r.reason,
+          r.providers.join(','),
+        ]),
+      );
+    }
+    return r;
+  }
+
   /** Mudou algo: projeta depois de `debounceMs` desde a primeira mudança (sem reiniciar a espera), respeitando `minGapMs`. */
   private schedule(): void {
     if (!this.sending() || this.sendTimer) return;
@@ -745,10 +795,16 @@ export class BuildingUplink {
         tasksToday: signals.tasksToday,
         compacted: signals.compacted,
         previousNames: this.names,
+        // Quais `provider` podem entrar neste pacote: o gate lê o contrato publicado; fechado, só claude|codex.
+        worldProviders: this.gate().providers,
+        opencodeWireProvider: this.o.opencodeWireProvider?.(),
       },
       this.ids,
       now,
     );
+    if (r.adapted) {
+      log.warnOnce('world-opencode-adapter', tr('Habblaud World: {0} agente(s) OpenCode adaptado(s) no fio como "{1}" (compatibilidade; origem local preservada).', [r.adapted, this.o.opencodeWireProvider?.() ?? '?']));
+    } else log.clearOnce('world-opencode-adapter');
     this.ids.sweep();
     if (r.truncated) {
       log.warnOnce('world-uplink-truncated', tr('Habblaud World: o prédio passou dos limites do mundo; {0} andar(es) e {1} agente(s) ficaram de fora.', [r.truncated.floors, r.truncated.agents]));

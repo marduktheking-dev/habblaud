@@ -8,7 +8,8 @@ import { hash32, mulberry32 } from '../hash';
 import { NAME_POOL } from '../names';
 import type { AgentInfo, RoomInfo } from '../types';
 import { flattenAppearance } from './appearance-flat';
-import { project, projectWithReport, roundTokens, tasksBand, uplinkBytes, type ProjectionInput, type WorldIdSource } from './projection';
+import { HABBLAUD_PROVIDERS, WORLD_PUBLISHED_PROVIDERS } from './opencode-gate';
+import { project, projectWithReport, roundTokens, tasksBand, unadaptWorldProvider, uplinkBytes, type ProjectionInput, type WorldIdSource } from './projection';
 import { UPLINK_LIMITS, type WorldUplink } from './protocol';
 import schemaJson from './schema.json';
 import { compileValidator, jsonKeyPaths, schemaKeyPaths } from './schema-validator';
@@ -402,5 +403,62 @@ describe('projeção: limites', () => {
     const r = projectWithReport(input(rooms, agents, { tokens: { day: 850_000, week: 12_000_000 } }), new FakeIds(), NOW);
     expect(r.truncated).toBeUndefined();
     expect(r.bytes).toBeLessThan(2600);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Gate do OpenCode: quem entra no pacote depende do contrato remoto que o gate leu (shared/world/opencode-gate.ts)
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('projeção: o gate decide quem tem provider no pacote', () => {
+  const OC_ROOM = '/Users/ana/projeto-opencode';
+  const rooms = [room(OC_ROOM)];
+  const oc = (id: string) => agent(id, OC_ROOM, { provider: 'opencode', account: '.opencode', name: 'Téo', custom: true });
+
+  it('padrão (sem a opção): só o contrato publicado — o do OpenCode não sai e nada vira claude', () => {
+    const u = project(input(rooms, [agent('m1', OC_ROOM), oc('o1')], { worldProviders: WORLD_PUBLISHED_PROVIDERS }), new FakeIds(), NOW);
+    expect(validate(u)).toEqual([]);
+    expect(agentsOf(u).map((a) => a.provider)).toEqual(['claude']);
+    expect(JSON.stringify(u)).not.toContain('opencode');
+  });
+
+  it('sem a opção worldProviders nenhuma, o padrão é o publicado (quem monta o uplink é quem injeta o gate)', () => {
+    const u = project(input(rooms, [oc('o1')]), new FakeIds(), NOW);
+    expect(agentsOf(u)).toEqual([]);
+    expect(JSON.stringify(u)).not.toContain('opencode');
+  });
+
+  it('gate aberto: o agente do OpenCode sobe como opencode (sem virar claude) e o pacote passa no schema', () => {
+    const u = project(input(rooms, [agent('m1', OC_ROOM), oc('o1')], { worldProviders: HABBLAUD_PROVIDERS }), new FakeIds(), NOW);
+    expect(validate(u)).toEqual([]);
+    const list = agentsOf(u);
+    expect(list.map((a) => a.provider).sort()).toEqual(['claude', 'opencode']);
+    // O nome real não sobe: todo agente vira nome do pool, como os demais.
+    expect(isPoolName(list.find((a) => a.provider === 'opencode')!.name)).toBe(true);
+  });
+
+  it('o que o contrato remoto NÃO aceita não sai mesmo com o gate ligado: o conjunto é a interseção', () => {
+    const codex = agent('c1', OC_ROOM, { provider: 'codex', account: '.codex' });
+    const u = project(input(rooms, [codex, oc('o1')], { worldProviders: ['claude', 'opencode'] }), new FakeIds(), NOW);
+    expect(validate(u)).toEqual([]);
+    expect(agentsOf(u).map((a) => a.provider)).toEqual(['opencode']);
+  });
+
+  it('adaptador opt-in: opencode remapeado no fio quando servidor não aceita opencode (contagem/status reais preservados)', () => {
+    const r = projectWithReport(input(rooms, [agent('m1', OC_ROOM), oc('o1')], { worldProviders: WORLD_PUBLISHED_PROVIDERS, opencodeWireProvider: 'codex' } as any), new FakeIds(), NOW);
+    expect(validate(r.uplink)).toEqual([]);
+    const list = agentsOf(r.uplink);
+    expect(list.map((a) => a.provider).sort()).toEqual(['claude', 'codex']);
+    expect(isPoolName(list.find((a) => a.provider === 'codex')!.name)).toBe(true);
+    expect(r.adapted).toBe(1);
+    // rota inversa
+    expect(unadaptWorldProvider('codex', { opencodeWireProvider: 'codex' })).toBe('opencode');
+    expect(unadaptWorldProvider('claude', { opencodeWireProvider: 'codex' })).toBe('claude');
+  });
+
+  it('adaptador não remapeia quando gate/contrato já aceita opencode', () => {
+    const r = projectWithReport(input(rooms, [oc('o1')], { worldProviders: HABBLAUD_PROVIDERS, opencodeWireProvider: 'codex' } as any), new FakeIds(), NOW);
+    expect(agentsOf(r.uplink).map((a) => a.provider)).toEqual(['opencode']);
+    expect(r.adapted).toBeUndefined();
   });
 });

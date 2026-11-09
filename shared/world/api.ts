@@ -116,6 +116,7 @@ import {
   type WorldTheme,
   type WorldUplink,
 } from './protocol';
+import type { OpenCodeGateView } from './opencode-gate';
 
 /**
  * Tema escolhido em Configurações › Aparência, guardado em world.json (PUT /api/world/theme). O pacote leva o tema já
@@ -188,6 +189,12 @@ export interface WorldBuildingStatus {
   summary?: AwaySummary;
   /** O código do prédio ("HB-4F2K", do /v1/me), para mandar a um amigo. */
   code?: string;
+  /**
+   * Gate do OpenCode (shared/world/opencode-gate.ts): por que os agentes do OpenCode sobem no prédio ou ficam de fora.
+   * Ausente quando o Habblaud não tem o gate montado (versão/config sem ele) — aí o prédio é só claude|codex, como
+   * sempre. É o que a interface usa para dizer "0 andares do OpenCode: o contrato do mundo ainda não aceita".
+   */
+  opencode?: OpenCodeGateView;
 }
 
 /** OfficeSnapshot.meta.world.building: o resumo do prédio (sem a conta), para a interface mostrar sem pedir o status. */

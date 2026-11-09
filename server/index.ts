@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { codexDirsRefused, isDefaultDir } from './accounts/detect';
 import { AccountsService } from './accounts/service';
 import { isTruthy, loadConfig, messagesOffReason, terminalOffReason, worldSocketUrl } from './config';
+import { HABBLAUD_PROVIDERS } from '../shared/world/opencode-gate';
 import { createApiHandler, sendJson } from './http/app';
 import { createRequestGuard, isLoopbackHost } from './http/guard';
 import { createRemoteGate, isRemoteRequest, loadSecret, RemoteSessions, startRemoteListener, type RemoteListener } from './http/remote';
@@ -62,6 +63,7 @@ import { WorldService } from './world/service';
 import { WorldSettingsStore } from './world/settings';
 import { OwnerSocial } from './world/social';
 import { BuildingTokens } from './world/tokens';
+import { WorldSchemaProbe } from './world/schema-probe';
 import { BuildingUplink } from './world/uplink';
 import { WorldViewer } from './world/viewer';
 
@@ -163,6 +165,20 @@ const hub = new Hub(office, {
 // "Meu dia": amostra o escritório a cada segundo e persiste em <dataDir>/stats/ (ver history/daystats.ts).
 const stats = new DayStatsService({ dir: join(config.dataDir, 'stats'), snapshot: () => hub.current() });
 stats.load();
+// Gate do OpenCode no prédio: a cada 6 h lê shared/world/schema.json do repositório público e devolve o `provider.enum`
+// que o servidor do mundo valida hoje (server/world/schema-probe.ts). É essa leitura que decide se um agente do OpenCode
+// pode entrar no pacote (shared/world/opencode-gate.ts): sem leitura fresca, o pacote sai só com claude|codex — o
+// padrão de sempre, sem risco nenhum. HABBLAUD_WORLD_OPENCODE=0 fecha também a barreira da flag.
+const worldSchema =
+  world && config.world.url
+    ? new WorldSchemaProbe({
+        repo: config.repo,
+        enabled: config.worldOpenCode,
+        file: join(config.dataDir, 'world-schema.json'),
+        onChange: () => late.office?.markDirty(),
+      })
+    : undefined;
+worldSchema?.load();
 // O prédio no Habblaud World (world/uplink.ts): só com o servidor do mundo aceito. Conecta sozinho com a conta aprovada, o
 // personagem criado, a trava do terminal e sem pausa; o pacote sai só da projeção (shared/world/projection.ts).
 const worldTokens = new BuildingTokens({ stats });
@@ -186,6 +202,35 @@ const worldUplink =
         onGoodbye: (reason) => world.goodbye(reason),
         onLeft: () => world.leftElsewhere(),
         onChange: () => office.markDirty(),
+        opencode: () => {
+          const base = { flag: config.worldOpenCode, probe: worldSchema?.get() };
+          // Dev/local override: confia no contrato local para OpenCode só quando o alvo é um servidor world local
+          // (http://127.0.0.1 ou host.docker.internal, aceito apenas em dev por parseWorldConfig). Nunca contra https
+          // público: evita ack "schema"/ack_cut no servidor que ainda não aceita opencode.
+          if (
+            config.world.dev &&
+            config.world.url?.startsWith('http://') &&
+            isTruthy(process.env.HABBLAUD_WORLD_OPENCODE_TRUST_LOCAL)
+          ) {
+            return {
+              ...base,
+              probe: {
+                providers: [...HABBLAUD_PROVIDERS],
+                checkedAt: Date.now(),
+                observations: 99,
+                opencodeObservations: 99,
+              },
+            };
+          }
+          return base;
+        },
+        opencodeWireProvider: () => {
+          const v = process.env.HABBLAUD_WORLD_OPENCODE_ADAPTER?.trim().toLowerCase();
+          if (!v || v === 'off' || v === '0' || v === 'false' || v === 'no') return undefined;
+          if (v === 'codex' || v === 'claude') return v;
+          if (v === '1' || v === 'true' || v === 'on' || v === 'yes') return 'codex';
+          return undefined;
+        },
       })
     : undefined;
 if (world && worldUplink) world.attachUplink(worldUplink);
@@ -356,6 +401,7 @@ permissions?.start();
 messages?.start();
 stats.start();
 updates.start();
+worldSchema?.start();
 worldUplink?.start();
 const ticker = setInterval(() => {
   try {
@@ -604,6 +650,7 @@ function shutdown(signal: string): void {
   messages?.stop();
   ptys?.stopAll();
   updates.stop();
+  worldSchema?.stop();
   worldViewer?.stop();
   worldUplink?.stop();
   world?.stop();

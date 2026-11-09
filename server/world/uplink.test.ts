@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { hash32 } from '../../shared/hash';
 import { SPECIAL } from '../../shared/activity';
 import type { Activity, AgentInfo } from '../../shared/types';
+import type { OpenCodeGateInput, OpenCodeProbe } from '../../shared/world/opencode-gate';
 import { VISIBILITY_DEFAULTS, type GoodbyeReason, type Player, type WorldUplink } from '../../shared/world/protocol';
 import schemaJson from '../../shared/world/schema.json';
 import { compileValidator } from '../../shared/world/schema-validator';
@@ -134,6 +135,8 @@ async function start(
     /** O tempo do uplink num relógio manual (com `timing` por cima do FAST). */
     clock?: ManualClock;
     timing?: Partial<UplinkTiming>;
+    /** Gate do OpenCode ligado no uplink (sem ele, status().opencode não existe e o pacote é só claude|codex). */
+    gate?: () => OpenCodeGateInput;
   } = {},
 ): Promise<Harness> {
   const world = await startFakeWorld();
@@ -191,6 +194,7 @@ async function start(
         h.changes.n++;
         h.metas.push(h.uplink?.meta());
       },
+      ...(opts.gate ? { opencode: opts.gate } : {}),
       timing: { ...FAST, ...opts.timing },
       ...(opts.clock ? { now: opts.clock.now, timers: opts.clock.timers } : {}),
       random: () => 0.5,
@@ -405,10 +409,10 @@ describe('BuildingUplink: conexão e remessas', () => {
     const h = await start({ tokensVisible: false });
     await waitFor(() => h.world.ws.uplinks.length === 1, 'primeira');
     expect(h.world.ws.uplinks[0].uplink.tokens).toBeUndefined();
-    h.store.setTheme('christmas');
+    h.store.setTheme('none');
     h.uplink.themeChanged();
     await waitFor(() => h.world.ws.uplinks.length === 2, 'tema');
-    expect(h.world.ws.uplinks[1].uplink.theme).toBe('christmas');
+    expect(h.world.ws.uplinks[1].uplink.theme).toBe('none');
   });
 
   it('welcome.building: andares e agentes do mundo até a primeira remessa daqui', async () => {
@@ -666,5 +670,74 @@ describe('backoffDelay', () => {
     expect(backoffDelay(0, () => 1)).toBe(2_500);
     expect(backoffDelay(9, () => 1)).toBe(60_000);
     expect(backoffDelay(9, () => 0)).toBe(45_000);
+  });
+});
+
+describe('BuildingUplink: o gate do OpenCode no pacote e no status', () => {
+  /** Sonda fresca: o contrato lido agora, com N leituras que trouxeram opencode. */
+  const probeWith = (providers: string[], opencodeObservations: number): OpenCodeProbe => ({
+    checkedAt: Date.now(),
+    observations: Math.max(2, opencodeObservations),
+    opencodeObservations,
+    providers,
+  });
+
+  it('sem o gate montado: status não promete nada e o agente do OpenCode não entra (comportamento de sempre)', async () => {
+    const h = await start();
+    await waitFor(() => !!h.uplink.status().lastAck, 'ack');
+    expect(h.uplink.status().opencode).toBeUndefined();
+
+    h.agents.push(agent('.opencode:ses_abc123', '/Users/ana/projeto-opencode', { provider: 'opencode', account: '.opencode' }));
+    h.change();
+    // Com o gate fechado o pacote projetado não muda (é o mesmo claude|codex), então não há remessa nova para esperar:
+    // dá tempo de a remessa ter acontecido (debounce + minGap) e confere que a última continua sem opencode.
+    await sleep(FAST.debounceMs! + FAST.minGapMs! + 100);
+    const last = h.world.ws.uplinks[h.world.ws.uplinks.length - 1].uplink;
+    expect(validate(last)).toEqual([]);
+    expect(agentsOf(last).some((a) => a.provider === 'opencode')).toBe(false);
+    expect(agentsOf(last).every((a) => a.provider === 'claude' || a.provider === 'codex')).toBe(true);
+  });
+
+  it('gate ligado e contrato remoto ainda sem opencode: o status explica e o pacote continua igual', async () => {
+    let probe: OpenCodeProbe = probeWith(['claude', 'codex'], 0);
+    const h = await start({ gate: () => ({ flag: true, probe }) });
+    await waitFor(() => !!h.uplink.status().lastAck, 'ack');
+    expect(h.uplink.status().opencode).toMatchObject({ allowed: false, reason: 'remote_denied', flag: true });
+
+    h.agents.push(agent('.opencode:ses_abc123', '/Users/ana/projeto-opencode', { provider: 'opencode', account: '.opencode' }));
+    h.change();
+    await sleep(FAST.debounceMs! + FAST.minGapMs! + 100);
+    expect(agentsOf(h.world.ws.uplinks[h.world.ws.uplinks.length - 1].uplink).some((a) => a.provider === 'opencode')).toBe(false);
+    expect(h.uplink.status().opencode).toMatchObject({ allowed: false, reason: 'remote_denied' });
+  });
+
+  it('dia em que o contrato remoto aceita: o agente do OpenCode entra na remessa e o status mostra aberto', async () => {
+    let probe: OpenCodeProbe = probeWith(['claude', 'codex'], 0);
+    const h = await start({ gate: () => ({ flag: true, probe }) });
+    await waitFor(() => !!h.uplink.status().lastAck, 'ack');
+    h.agents.push(agent('.opencode:ses_abc123', '/Users/ana/projeto-opencode', { provider: 'opencode', account: '.opencode' }));
+
+    // A sonda releu o contrato publicado e ele passou a ter "opencode" duas vezes seguidas.
+    probe = probeWith(['claude', 'codex', 'opencode'], 2);
+    h.change();
+    await waitFor(
+      () => agentsOf(h.world.ws.uplinks[h.world.ws.uplinks.length - 1].uplink).some((a) => a.provider === 'opencode'),
+      'agente do OpenCode na remessa',
+    );
+    const last = h.world.ws.uplinks[h.world.ws.uplinks.length - 1].uplink;
+    expect(validate(last)).toEqual([]);
+    expect(h.uplink.status().opencode).toMatchObject({ allowed: true, reason: 'open', providers: ['claude', 'codex', 'opencode'] });
+    expect(h.uplink.status().floors).toBeGreaterThanOrEqual(1);
+  });
+
+  it('flag desligada (HABBLAUD_WORLD_OPENCODE=0): mesmo com o contrato aceitando, não manda', async () => {
+    const h = await start({ gate: () => ({ flag: false, probe: probeWith(['claude', 'codex', 'opencode'], 2) }) });
+    await waitFor(() => !!h.uplink.status().lastAck, 'ack');
+    expect(h.uplink.status().opencode).toMatchObject({ allowed: false, reason: 'flag_off', flag: false });
+
+    h.agents.push(agent('.opencode:ses_abc123', '/Users/ana/projeto-opencode', { provider: 'opencode', account: '.opencode' }));
+    h.change();
+    await sleep(FAST.debounceMs! + FAST.minGapMs! + 100);
+    expect(agentsOf(h.world.ws.uplinks[h.world.ws.uplinks.length - 1].uplink).some((a) => a.provider === 'opencode')).toBe(false);
   });
 });

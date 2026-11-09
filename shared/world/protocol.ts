@@ -498,11 +498,19 @@ export type WorldErrorCode = (typeof WORLD_ERROR_CODES)[number];
 export type WorldTheme = 'none' | 'halloween' | 'christmas';
 export type WorldAgentStatus = 'working' | 'waiting' | 'idle' | 'shell'; // done/offline = o agente some
 
+/**
+ * A ferramenta que está rodando (o campo `provider` do pacote). O contrato publicado em shared/world/schema.json ainda
+ * enumera ["claude", "codex"]: "opencode" só sai daqui com o gate do OpenCode aberto (shared/world/opencode-gate.ts),
+ * que confere o enum remoto antes de mandar. Escrever "claude" num agente do OpenCode seria falso (Termos, "Dados
+ * verdadeiros"); recusar o pacote inteiro seria pior. O gate decide — este tipo só diz o que é representável.
+ */
+export type WorldProvider = 'claude' | 'codex' | 'opencode';
+
 export interface WorldAgent {
   id: string;                 // "a_" + 8 hex aleatórios; novo quando o agente chega e a cada 24 h ± 6 h
   kind: 'main' | 'sub';
   parentId?: string;          // sub: id do agente que o chamou (ausente se o pai não está no pacote)
-  provider: 'claude' | 'codex';
+  provider: WorldProvider;
   status: WorldAgentStatus;   // sem "desde quando": nenhum tempo sai (seção 3.5)
   look: 'f' | 'm';
   name: string;               // pickName(id do mundo): nunca o nome do escritório, editado ou não

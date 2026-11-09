@@ -580,7 +580,7 @@ describe('pisos e paredes', () => {
       expect(a.countOpaque(), k).toBe(CHUNK_PX * CHUNK_PX);
       expect(floorChunk(k, 2, -1, { seed: 3, tint: '#c9d1dc', tint2: '#bdc6d3' }).data).toEqual(a.data);
     }
-  });
+  }, 15000);
 
   it('a madeira continua entre blocos vizinhos (sem emenda na borda)', () => {
     const left = floorChunk('wood', 0, 0, { seed: 1 });

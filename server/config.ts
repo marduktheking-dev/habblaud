@@ -54,6 +54,12 @@ export interface ServerConfig {
   codex: boolean;
   /** Observa as sessões do OpenCode pelos eventos do plugin (sources/opencode/); HABBLAUD_OPENCODE=0 desliga. */
   opencode: boolean;
+  /**
+   * Gate do OpenCode no prédio do Habblaud World (shared/world/opencode-gate.ts): a leitura do contrato publicado é
+   * sempre feita, e HABBLAUD_WORLD_OPENCODE=0 (false, off, no) fecha a barreira da flag. Ligado por padrão: quem
+   * realmente decide o que sai é o enum remoto + o ack do servidor, não a flag.
+   */
+  worldOpenCode: boolean;
   /** Segunda porta, com login, para o celular na rede local (http/remote.ts); ausente = desligada. */
   remote?: RemoteConfig;
   /** Por que o acesso remoto ficou desligado quando as variáveis estão incompletas. */
@@ -252,6 +258,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
     updateCheck: !env.HABBLAUD_UPDATE_CHECK?.trim() || isTruthy(env.HABBLAUD_UPDATE_CHECK),
     codex: !env.HABBLAUD_CODEX?.trim() || isTruthy(env.HABBLAUD_CODEX),
     opencode: !env.HABBLAUD_OPENCODE?.trim() || isTruthy(env.HABBLAUD_OPENCODE),
+    worldOpenCode: !env.HABBLAUD_WORLD_OPENCODE?.trim() || isTruthy(env.HABBLAUD_WORLD_OPENCODE),
     remote: remote.config,
     remoteWarning: remote.warning,
     world: parseWorldConfig(env, argv),

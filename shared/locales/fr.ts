@@ -3397,4 +3397,11 @@ export const FR: Readonly<Record<string, string>> = {
   "World: o protocolo ainda só aceita Claude Code e Codex; um prédio só com OpenCode fica sem andares lá. O escritório daqui continua mostrando as sessões.": "World : le protocole n’accepte encore que Claude Code et Codex ; un bâtiment avec seulement OpenCode n’a pas d’étages là-bas. Le bureau ici continue d’afficher les sessions.",
   "Rodando: o processo já começou no computador; a sessão deve aparecer no escritório em instantes.": "En cours : le processus a démarré sur cet ordinateur ; la session devrait apparaître au bureau dans un instant.",
   "Hoje o World só aceita agentes do Claude Code e do Codex. Sessões do OpenCode ficam no escritório local e não viram andares no prédio.": "Aujourd’hui, le World n’accepte que les agents de Claude Code et Codex. Les sessions OpenCode restent dans le bureau local et ne deviennent pas des étages du bâtiment.",
+  "world-schema.json ilegível ({0}); lendo o contrato de novo.": "world-schema.json illisible ({0}) ; lecture du contrat publié à nouveau.",
+  "Habblaud World: não foi possível ler o contrato publicado ({0}); o OpenCode fica fora do prédio.": "Habblaud World : impossible de lire le contrat publié ({0}) ; OpenCode reste hors de l'immeuble.",
+  "OpenCode no prédio: o contrato do mundo já aceita os três provedores.": "OpenCode dans l'immeuble : le contrat du monde accepte déjà les trois fournisseurs.",
+  "OpenCode fora do prédio: o envio está desligado (HABBLAUD_WORLD_OPENCODE=0). As sessões continuam aqui no escritório.": "OpenCode hors de l'immeuble : l'envoi est désactivé (HABBLAUD_WORLD_OPENCODE=0). Les sessions restent ici, au bureau.",
+  "OpenCode fora do prédio: ainda sem leitura do contrato do mundo. As sessões continuam aqui no escritório.": "OpenCode hors de l'immeuble : le contrat du monde n'a pas encore été lu. Les sessions restent ici, au bureau.",
+  "OpenCode fora do prédio: o mundo recusou a última remessa; volta a tentar sozinho depois.": "OpenCode hors de l'immeuble : le monde a refusé le dernier envoi ; il réessaiera tout seul plus tard.",
+  "OpenCode fora do prédio: o contrato do mundo ainda só aceita Claude Code e Codex. As sessões continuam aqui no escritório.": "OpenCode hors de l'immeuble : le contrat du monde n'accepte encore que Claude Code et Codex. Les sessions restent ici, au bureau.",
 };

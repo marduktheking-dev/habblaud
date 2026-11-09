@@ -52,11 +52,14 @@ export function isWorldId(id: string): boolean {
 export const WORLD_TOOL_ACCOUNTS: Readonly<Record<Provider, { short: string; name: string; color: string }>> = {
   claude: { short: 'C', name: 'Claude Code', color: '#f08a3c' },
   codex: { short: 'X', name: 'Codex', color: '#a77bf3' },
-  // O mundo ainda não conhece o OpenCode (WorldAgent.provider em protocol.ts só tem claude|codex): a entrada existe
-  // só para o Record<Provider> ficar completo e nunca aparece na visita (PROVIDERS não o inclui).
+  // O contrato do mundo ainda não manda OpenCode (o gate de shared/world/opencode-gate.ts é quem abre isso); a
+  // entrada fica pronta para o dia em que mandar — aí o personagem aparece como OpenCode e não vira um falso Claude.
   opencode: { short: 'O', name: 'OpenCode', color: '#5cc97b' },
 };
+/** As duas ferramentas que o contrato do mundo já manda. */
 const PROVIDERS: readonly Provider[] = ['claude', 'codex'];
+/** O que a visita sabe renderizar: as duas de sempre e o OpenCode, quando o prédio de fora trouxer um. */
+const VISIT_PROVIDERS: readonly Provider[] = [...PROVIDERS, 'opencode'];
 /** Status que existem no mundo; um que esta versão não conhece vira 'idle' (passeia, sem prometer nada). */
 const STATUSES: readonly AgentStatus[] = ['working', 'waiting', 'idle', 'shell'];
 
@@ -178,7 +181,7 @@ function build(floors: WorldBuildingDetail['floors'], hidden: boolean, now: numb
 function agentInfo(a: WorldAgent, roomId: string, now: number, present: ReadonlySet<string>): AgentInfo {
   const id = worldId(a.id);
   const kind = a.kind === 'sub' ? 'sub' : 'main';
-  const provider: Provider = PROVIDERS.includes(a.provider) ? a.provider : 'claude';
+  const provider: Provider = VISIT_PROVIDERS.includes(a.provider) ? a.provider : 'claude';
   const status: AgentStatus = STATUSES.includes(a.status) ? a.status : 'idle';
   const info: AgentInfo = {
     id,
@@ -219,9 +222,10 @@ function partsOf(raw: unknown): AppearanceParts | undefined {
   return Object.keys(out).length ? out : undefined;
 }
 
-/** Uma conta fictícia por ferramenta (as duas sempre, na mesma ordem), com as sessões principais de cada uma. */
+/** Uma conta fictícia por ferramenta: Claude Code e Codex sempre (na mesma ordem), OpenCode só se vier no prédio. */
 function toolAccounts(agents: readonly AgentInfo[]): AccountInfo[] {
-  return PROVIDERS.map((p) => ({
+  const list = VISIT_PROVIDERS.filter((p) => PROVIDERS.includes(p) || agents.some((a) => a.kind === 'main' && a.provider === p));
+  return list.map((p) => ({
     id: worldId(p),
     provider: p,
     short: WORLD_TOOL_ACCOUNTS[p].short,
